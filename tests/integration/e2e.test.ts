@@ -3,7 +3,9 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { chromium } from 'playwright';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { CLI, ROOT, runCli, startFixture, tmpDir, type Fixture } from '../helpers.js';
+import os from 'node:os';
+import { CLI, ROOT, bareDir, runCli, startFixture, tmpDir, type Fixture } from '../helpers.js';
+import { portOwnerCwd } from '../../src/safety/scope.js';
 import type { Finding, RunResults } from '../../src/core/types.js';
 
 const readResults = (dir: string): RunResults => JSON.parse(fs.readFileSync(path.join(dir, 'results.json'), 'utf8'));
@@ -14,11 +16,12 @@ beforeAll(() => {
 });
 
 describe('buggy fixture: FThisUp finds real, reproducible bugs', () => {
-  let fx: Fixture; let out: string; let r: RunResults; let run: { code: number | null; stdout: string };
+  let fx: Fixture; let out: string; let projDir: string; let r: RunResults; let run: { code: number | null; stdout: string };
   beforeAll(async () => {
-    fx = await startFixture('buggy-app');
-    out = path.join(tmpDir(), 'results');
-    run = await runCli(['test', '--url', fx.url, '--output', out], { cwd: tmpDir() });
+    const proj = projDir = tmpDir();
+    fx = await startFixture('buggy-app', {}, proj);
+    out = path.join(proj, 'results');
+    run = await runCli(['test', '--url', fx.url, '--output', out], { cwd: proj });
     r = readResults(out);
   });
   afterAll(() => fx?.stop());
@@ -136,7 +139,7 @@ describe('buggy fixture: FThisUp finds real, reproducible bugs', () => {
 
   it('`fthisup report` regenerates the report from results.json', async () => {
     fs.rmSync(path.join(out, 'report.html'));
-    const res = await runCli(['report', '--input', out]);
+    const res = await runCli(['report', '--input', out], { cwd: projDir });
     expect(res.code).toBe(0);
     expect(fs.readFileSync(path.join(out, 'report.html'), 'utf8')).toContain('<!doctype html>');
   });
@@ -145,9 +148,10 @@ describe('buggy fixture: FThisUp finds real, reproducible bugs', () => {
 describe('clean fixture: no invented failures', () => {
   let fx: Fixture; let out: string; let r: RunResults; let code: number | null;
   beforeAll(async () => {
-    fx = await startFixture('clean-app');
-    out = path.join(tmpDir(), 'results');
-    ({ code } = await runCli(['test', '--url', fx.url, '--output', out], { cwd: tmpDir() }));
+    const proj = tmpDir();
+    fx = await startFixture('clean-app', {}, proj);
+    out = path.join(proj, 'results');
+    ({ code } = await runCli(['test', '--url', fx.url, '--output', out], { cwd: proj }));
     r = readResults(out);
   });
   afterAll(() => fx?.stop());
@@ -179,8 +183,9 @@ describe('clean fixture: no invented failures', () => {
 
 describe('safety restrictions in the real CLI', () => {
   it('refuses a non-local target and tests nothing', async () => {
-    const out = path.join(tmpDir(), 'o');
-    const res = await runCli(['test', '--url', 'https://example.com', '--output', out], { cwd: tmpDir() });
+    const proj = tmpDir();
+    const out = path.join(proj, 'o');
+    const res = await runCli(['test', '--url', 'https://example.com', '--output', out], { cwd: proj });
     expect(res.code).toBe(2);
     expect(res.stderr).toMatch(/Blocked by safety policy/);
     expect(res.stderr).toMatch(/allowedHosts/);
@@ -201,16 +206,18 @@ describe('safety restrictions in the real CLI', () => {
     expect(res.stderr).toMatch(/Configuration error/);
   });
   it('handles an unavailable application gracefully (no stack trace)', async () => {
-    const res = await runCli(['test', '--url', 'http://127.0.0.1:1', '--output', path.join(tmpDir(), 'o')], { cwd: tmpDir() });
+    const proj = tmpDir();
+    const res = await runCli(['test', '--url', 'http://127.0.0.1:1', '--output', path.join(proj, 'o')], { cwd: proj });
     expect(res.code).toBe(3);
     expect(res.stderr).toMatch(/Could not reach/);
     expect(res.stderr).not.toMatch(/\n\s+at /);
   });
   it('works with no API keys / no LLM anywhere in the environment', async () => {
-    const fx = await startFixture('clean-app');
+    const proj = tmpDir();
+    const fx = await startFixture('clean-app', {}, proj);
     try {
       const env = { ANTHROPIC_API_KEY: '', OPENAI_API_KEY: '', CLAUDE_CODE: '', CODEX_HOME: '' };
-      const res = await runCli(['test', '--url', fx.url, '--dry-run'], { cwd: tmpDir(), env });
+      const res = await runCli(['test', '--url', fx.url, '--dry-run'], { cwd: proj, env });
       expect(res.code).toBe(0);
       expect(res.stdout).toMatch(/Dry run: \d+ scenario/);
     } finally { fx.stop(); }
@@ -219,9 +226,9 @@ describe('safety restrictions in the real CLI', () => {
 
 describe('agent-proposed scenarios', () => {
   it('runs valid typed scenarios and rejects anything that is not in the typed vocabulary', async () => {
-    const fx = await startFixture('clean-app');
+    const cwd = tmpDir();
+    const fx = await startFixture('clean-app', {}, cwd);
     try {
-      const cwd = tmpDir();
       const file = path.join(cwd, 'agent.json');
       fs.writeFileSync(file, JSON.stringify({ scenarios: [
         { id: 'agent-about-narrow', name: 'About page at 280px', category: 'ui-chaos', risk: 'low', target: '/about', steps: [{ action: 'setViewport', width: 280, height: 500 }, { action: 'goto', path: '/about' }], expected: [{ type: 'noUncaughtExceptions' }, { type: 'noHorizontalOverflow' }] },
@@ -249,9 +256,10 @@ describe('authentication testing (explicit test account only)', () => {
   };
 
   it('passes every auth check on a correctly protected app, and never leaks the password', async () => {
-    const fx = await startFixture('auth-app');
+    const cwd = configFor();
+    const fx = await startFixture('auth-app', {}, cwd);
     try {
-      const cwd = configFor(); const out = path.join(cwd, 'o');
+      const out = path.join(cwd, 'o');
       const res = await runCli(['test', '--url', fx.url, '--output', out, '--no-static'], { cwd, env: { FTHISUP_TEST_USER: USER, FTHISUP_TEST_PASSWORD: PASS } });
       const r = readResults(out);
       const auth = r.results.filter((x) => x.category === 'authentication');
@@ -265,9 +273,10 @@ describe('authentication testing (explicit test account only)', () => {
   });
 
   it('confirms broken auth: unauthenticated access, bad logout and visible restricted UI', async () => {
-    const fx = await startFixture('auth-app', { BROKEN: '1' });
+    const cwd = configFor();
+    const fx = await startFixture('auth-app', { BROKEN: '1' }, cwd);
     try {
-      const cwd = configFor(); const out = path.join(cwd, 'o');
+      const out = path.join(cwd, 'o');
       const res = await runCli(['test', '--url', fx.url, '--output', out, '--no-static'], { cwd, env: { FTHISUP_TEST_USER: USER, FTHISUP_TEST_PASSWORD: PASS } });
       const r = readResults(out);
       for (const id of ['auth-protected-dashboard', 'auth-session-expiry', 'auth-logout', 'auth-restricted-ui']) {
@@ -282,9 +291,10 @@ describe('authentication testing (explicit test account only)', () => {
   });
 
   it('skips (never fails) auth scenarios that need credentials when none are supplied', async () => {
-    const fx = await startFixture('auth-app');
+    const cwd = configFor();
+    const fx = await startFixture('auth-app', {}, cwd);
     try {
-      const cwd = configFor(); const out = path.join(cwd, 'o');
+      const out = path.join(cwd, 'o');
       await runCli(['test', '--url', fx.url, '--output', out, '--no-static', '--max-tests', '30'], { cwd, env: { FTHISUP_TEST_USER: '', FTHISUP_TEST_PASSWORD: '' } });
       const r = readResults(out);
       const needs = r.results.filter((x) => ['auth-session-expiry', 'auth-logout', 'auth-bad-login'].includes(x.scenarioId));
@@ -335,13 +345,82 @@ describe('other commands', () => {
     expect((await runCli(['init'], { cwd })).code).toBe(2); // refuses to overwrite
   });
   it('scan writes a manifest that separates confirmed from inferred', async () => {
-    const out = path.join(tmpDir(), 'o');
-    const res = await runCli(['scan', '--no-live', '--output', out], { cwd: path.join(ROOT, 'tests', 'fixtures', 'static-project') });
+    const proj = tmpDir();
+    fs.cpSync(path.join(ROOT, 'tests', 'fixtures', 'static-project'), proj, { recursive: true });
+    const out = path.join(proj, 'o');
+    const res = await runCli(['scan', '--no-live', '--output', out], { cwd: proj });
     expect(res.code).toBe(0);
     const m = JSON.parse(fs.readFileSync(path.join(out, 'discovery.json'), 'utf8'));
     expect(m.project.framework.certainty).toBe('confirmed');
     expect(m.project.routes[0].certainty).toBe('inferred');
     expect(m.warnings.length).toBeGreaterThan(0);
     expect(JSON.stringify(m)).not.toContain('do-not-read-me');
+  });
+});
+
+describe('project scope: FThisUp only works on the project at hand', () => {
+  it('refuses to run outside a project', async () => {
+    const res = await runCli(['test', '--url', 'http://127.0.0.1:1'], { cwd: bareDir() });
+    expect(res.code).toBe(2);
+    expect(res.stderr).toMatch(/not inside a project/);
+  });
+  it('refuses to treat the home directory as a project, even if it contains a package.json', async () => {
+    const home = bareDir();
+    fs.writeFileSync(path.join(home, 'package.json'), '{}');
+    const sub = path.join(home, 'notes'); fs.mkdirSync(sub);
+    const res = await runCli(['scan', '--no-live'], { cwd: sub, env: { HOME: home, USERPROFILE: home } });
+    expect(res.code).toBe(2);
+    expect(res.stderr).toMatch(/not inside a project/);
+  });
+  it('finds the project root from a subfolder and scans only that project', async () => {
+    const proj = tmpDir();
+    fs.mkdirSync(path.join(proj, 'src'));
+    const sibling = tmpDir(); // another project that must never be touched
+    fs.writeFileSync(path.join(sibling, 'secret.ts'), "// TODO: fix auth\nthrow new Error('not implemented')");
+    const res = await runCli(['scan', '--no-live'], { cwd: path.join(proj, 'src') });
+    expect(res.code).toBe(0);
+    expect(fs.existsSync(path.join(proj, 'fthisup-results', 'discovery.json'))).toBe(true);
+    expect(fs.existsSync(path.join(proj, 'src', 'fthisup-results'))).toBe(false);
+    expect(fs.readFileSync(path.join(proj, 'fthisup-results', 'discovery.json'), 'utf8')).not.toContain('secret.ts');
+  });
+  it.each([
+    ['--output', path.join(os.tmpdir(), 'fthisup-escape')],
+    ['--output', '../escape'],
+    ['--config', '../other.json'],
+    ['--scenarios', '/etc/passwd'],
+  ])('refuses %s outside the project (%s)', async (flag, value) => {
+    const proj = tmpDir();
+    const res = await runCli(['test', '--url', 'http://127.0.0.1:1', flag, value], { cwd: proj });
+    expect(res.code).toBe(2);
+    expect(res.stderr).toMatch(/outside the project/);
+  });
+  it('refuses an output directory that escapes through a symlink', async () => {
+    const proj = tmpDir(); const elsewhere = bareDir();
+    try { fs.symlinkSync(elsewhere, path.join(proj, 'link'), 'dir'); } catch { return; /* no symlink permission (Windows) */ }
+    const res = await runCli(['test', '--url', 'http://127.0.0.1:1', '--output', 'link/out'], { cwd: proj });
+    expect(res.code).toBe(2);
+    expect(fs.existsSync(path.join(elsewhere, 'out'))).toBe(false);
+  });
+  it('refuses a server that belongs to a different project unless the project config declares it', async (ctx) => {
+    const other = tmpDir(); const mine = tmpDir();
+    const fx = await startFixture('clean-app', {}, other);
+    try {
+      if (portOwnerCwd(fx.port) === null) return ctx.skip(); // owner not discoverable here (no ss/lsof)
+      const blocked = await runCli(['test', '--url', fx.url, '--dry-run'], { cwd: mine });
+      expect(blocked.code).toBe(2);
+      expect(blocked.stderr).toMatch(/does not look like this project's app/);
+      // auto-detection must not pick it up either (only matters on common ports; --url is the strict path)
+      fs.writeFileSync(path.join(mine, 'fthisup.config.json'), JSON.stringify({ url: fx.url }));
+      const declared = await runCli(['test', '--dry-run'], { cwd: mine });
+      expect(declared.code).toBe(0);
+    } finally { fx.stop(); }
+  });
+  it('accepts a server started from inside the project (also from a subfolder)', async () => {
+    const proj = tmpDir(); fs.mkdirSync(path.join(proj, 'server'));
+    const fx = await startFixture('clean-app', {}, path.join(proj, 'server'));
+    try {
+      const res = await runCli(['test', '--url', fx.url, '--dry-run'], { cwd: proj });
+      expect(res.code).toBe(0);
+    } finally { fx.stop(); }
   });
 });

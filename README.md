@@ -123,6 +123,7 @@ These are not identical mechanisms; see [docs/agent-integration.md](docs/agent-i
 
 FThisUp is for apps **you own or are explicitly authorized to test**. It sends hostile-looking input to the app, and by default it really submits forms on localhost, so use a throwaway dev database.
 
+- **Project-scoped:** runs only inside the project you launch it from (never `~` or `/`), reads/writes only inside that project, and refuses a local server that belongs to a different project.
 - Loopback only by default. Anything else is **blocked** unless allow-listed, marked authorized and given an environment; production targets are strictly read-only.
 - Third-party origins are never contacted (aborted in the browser), even if your app calls them.
 - Deletion/purchase/sign-up/messaging/upload/irreversible actions are blocked unless you approve that exact action in config.
