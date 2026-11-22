@@ -306,6 +306,19 @@ describe('other commands', () => {
       expect((await runCli(['install-skill', '--agent', agent], { cwd })).code).toBe(2);
     }
   });
+  it('install-skill auto-detects agents and supports --agent all', async () => {
+    const cwd = tmpDir();
+    fs.mkdirSync(path.join(cwd, '.cursor'));
+    const res = await runCli(['install-skill'], { cwd, env: { HOME: cwd, USERPROFILE: cwd } });
+    expect(res.code).toBe(0);
+    expect(fs.existsSync(path.join(cwd, '.cursor/skills/fthisup/SKILL.md'))).toBe(true);
+    expect(fs.existsSync(path.join(cwd, '.claude'))).toBe(false);
+    const empty = tmpDir();
+    expect((await runCli(['install-skill'], { cwd: empty, env: { HOME: empty, USERPROFILE: empty } })).code).toBe(2);
+    const all = tmpDir();
+    expect((await runCli(['install-skill', '--agent', 'all'], { cwd: all })).code).toBe(0);
+    for (const d of ['.claude/skills', '.agents/skills', '.cursor/skills']) expect(fs.existsSync(path.join(all, d, 'fthisup/SKILL.md'))).toBe(true);
+  });
   it('doctor reports the environment and exits 0 when everything required is present', async () => {
     const res = await runCli(['doctor'], { cwd: tmpDir() });
     expect(res.stdout).toMatch(/Node\.js v\d+/);

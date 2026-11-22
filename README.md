@@ -12,6 +12,15 @@ npx fthisup            # tests the app running on localhost (auto-detected)
 
 Explicit target: `npx fthisup test --url http://localhost:3000`
 
+## Install straight from GitHub (one command, no npm publish needed)
+
+```bash
+npx --yes github:Joseph1-H/FThisUp install-skill      # builds on first run; auto-detects Claude Code / Codex / Cursor
+npx playwright install chromium                        # one-time browser download
+```
+
+Then type `/fthisup` in Claude Code (Codex: `$fthisup`). Without an agent: `npx --yes github:Joseph1-H/FThisUp test --url http://localhost:3000`.
+
 ## Demo: a real run against a deliberately broken app
 
 The repo contains a small notes app with planted bugs (`tests/fixtures/buggy-app`). This is the **actual, unedited output** of `npx fthisup test` against it (Chromium 159, Linux). The tool exited with code 1 after 59 seconds:
@@ -79,7 +88,7 @@ npx fthisup test [options]  # run real tests, write results.json + report.html
 npx fthisup report          # regenerate report.html from results.json
 npx fthisup init            # write fthisup.config.json from detected project settings
 npx fthisup doctor          # check Node, Chromium, config, target, output dir (--install to fetch Chromium)
-npx fthisup install-skill --agent claude|codex|cursor [--global]
+npx fthisup install-skill [--agent claude|codex|cursor|all] [--global]   # auto-detects your agents
 ```
 
 `test` options: `--url` `--mode safe|thorough` `--headless/--no-headless` `--max-tests 100` `--timeout 30000` `--report html|json|none` `--output ./fthisup-results` `--config` `--scenarios file.json` `--dry-run` `--start` `--no-static` `--exit-zero` `--quiet`. Exit codes: 0 ok · 1 confirmed issues · 2 blocked/invalid config · 3 app unreachable · 4 environment problem. See [docs/configuration.md](docs/configuration.md).
@@ -96,7 +105,7 @@ The skill in [`skills/fthisup`](skills/fthisup/SKILL.md) makes the agent run the
 
 | Agent | Install | Invoke |
 |---|---|---|
-| Claude Code | `npx fthisup install-skill --agent claude` (`--global` for `~/.claude/skills`) | `/fthisup`, `/fthisup fix` |
+| Claude Code | `npx fthisup install-skill` (auto-detect) or `--agent claude` (`--global` for `~/.claude/skills`) | `/fthisup`, `/fthisup fix` |
 | OpenAI Codex | `npx fthisup install-skill --agent codex` (`.agents/skills`) | `$fthisup` or `/skills` |
 | Cursor | `npx fthisup install-skill --agent cursor` (`.cursor/skills`) | `/` picker → `fthisup` |
 

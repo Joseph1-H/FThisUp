@@ -38,7 +38,8 @@
     "test": "npm run build && vitest run",
     "test:unit": "vitest run tests/unit",
     "test:e2e": "vitest run tests/integration",
-    "prepublishOnly": "npm test"
+    "prepublishOnly": "npm test",
+    "prepare": "npm run build"
   },
   "dependencies": {
     "commander": "^12.1.0",
