@@ -1,0 +1,14 @@
+{
+  "url": "http://localhost:3000",
+  "startCommand": "npm run dev",
+  "mode": "safe",
+  "maxTests": 100,
+  "excludeRoutes": ["/admin/*"],
+  "safety": { "environment": "local", "authorized": false, "allowedHosts": [], "approvedActions": [] },
+  "auth": {
+    "loginUrl": "/login",
+    "protectedRoutes": ["/dashboard"],
+    "logoutSelector": "#logout",
+    "restrictedSelectors": ["#admin-panel"]
+  }
+}

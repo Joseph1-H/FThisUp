@@ -1,0 +1,14 @@
+{
+  "scenarios": [
+    {
+      "id": "agent-contact-narrow",
+      "name": "Contact page at 280px wide",
+      "category": "ui-chaos",
+      "risk": "low",
+      "target": "/contact",
+      "steps": [{ "action": "setViewport", "width": 280, "height": 500 }, { "action": "goto", "path": "/contact" }],
+      "expected": [{ "type": "noUncaughtExceptions" }, { "type": "noHorizontalOverflow" }],
+      "requiresApproval": false
+    }
+  ]
+}
