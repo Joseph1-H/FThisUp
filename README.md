@@ -19,7 +19,15 @@ npx --yes github:Joseph1-H/FThisUp install-skill      # builds on first run; aut
 npx playwright install chromium                        # one-time browser download
 ```
 
-Then type `/fthisup` in Claude Code (Codex: `$fthisup`). Without an agent: `npx --yes github:Joseph1-H/FThisUp test --url http://localhost:3000`.
+Or, the git-clone way (the repo root *is* a valid skill folder):
+
+```bash
+git clone --depth 1 https://github.com/Joseph1-H/FThisUp ~/.claude/skills/fthisup      # Claude Code, all projects
+git clone --depth 1 https://github.com/Joseph1-H/FThisUp .agents/skills/fthisup        # Codex, this repo
+git clone --depth 1 https://github.com/Joseph1-H/FThisUp .cursor/skills/fthisup        # Cursor, this repo
+```
+
+The skill then runs the CLI via `npx --yes github:Joseph1-H/FThisUp` when `fthisup` isn't installed. Then type `/fthisup` in Claude Code (Codex: `$fthisup`). Without an agent: `npx --yes github:Joseph1-H/FThisUp test --url http://localhost:3000`.
 
 ## Demo: a real run against a deliberately broken app
 

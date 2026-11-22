@@ -54,3 +54,13 @@ describe('project discovery', () => {
     expect(d.apiIntegrations.some((a) => a.value.includes('axios'))).toBe(true);
   });
 });
+
+describe('skill packaging', () => {
+  it('repo-root SKILL.md and references mirror skills/fthisup (so a plain git clone is a valid skill)', async () => {
+    const fs = await import('node:fs');
+    const rd = (p: string) => fs.readFileSync(path.join(ROOT, p), 'utf8');
+    expect(rd('SKILL.md')).toBe(rd('skills/fthisup/SKILL.md'));
+    for (const f of ['fix.md', 'scenario-format.md']) expect(rd(`references/${f}`)).toBe(rd(`skills/fthisup/references/${f}`));
+    expect(rd('SKILL.md')).toMatch(/^---\nname: fthisup\n/);
+  });
+});
