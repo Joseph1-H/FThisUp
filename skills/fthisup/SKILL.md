@@ -14,7 +14,7 @@ You orchestrate the **FThisUp CLI**. The CLI does the testing (real browser, rea
 
 If the first argument is `fix`, stop here and follow [references/fix.md](references/fix.md) instead.
 
-Run the CLI as `npx fthisup ...` (or `node_modules/.bin/fthisup` if it is a dependency). Run from the project root.
+Run the CLI as `npx fthisup ...` (or `fthisup ...` / `node_modules/.bin/fthisup` if installed). If `npx fthisup` cannot be found because the package is not on npm, use `npx --yes github:Joseph1-H/FThisUp ...` in its place everywhere below. Run from the project root.
 
 ## 1. Identify the project
 Read `package.json` (or the equivalent) to learn the framework, the dev command and the port. Check for an existing `fthisup.config.json`. If a URL was given as an argument, use it.

@@ -293,23 +293,40 @@ program.command('doctor').description('Check Node, Playwright browsers, configur
     process.exitCode = bad ? EXIT.ENV : EXIT.OK;
   });
 
-program.command('install-skill').description('Copy the FThisUp Agent Skill into a coding agent\'s skills directory (explicit, never automatic)')
-  .requiredOption('--agent <agent>', 'claude | codex | cursor')
+program.command('install-skill').description('Copy the FThisUp Agent Skill into your coding agents\' skills directories (explicit, never automatic)')
+  .option('--agent <agent>', 'claude | codex | cursor | all (default: auto-detect the agents you use)')
   .option('--global', 'install for your user account instead of this project')
   .option('--dir <path>', 'custom skills directory (overrides --agent location)')
   .option('--force', 'overwrite an existing install')
-  .action((o: { agent: string; global?: boolean; dir?: string; force?: boolean }) => {
+  .action((o: { agent?: string; global?: boolean; dir?: string; force?: boolean }) => {
     const rel: Record<string, string> = { claude: '.claude/skills', codex: '.agents/skills', cursor: '.cursor/skills' };
-    if (!rel[o.agent]) fail(EXIT.BLOCKED, c.red('--agent must be one of: claude, codex, cursor'));
-    const base = o.dir ? path.resolve(o.dir) : path.join(o.global ? os.homedir() : process.cwd(), rel[o.agent]!);
+    const markers: Record<string, string[]> = { claude: ['.claude'], codex: ['.codex', '.agents'], cursor: ['.cursor'] };
+    const home = os.homedir();
+    let agents: string[];
+    if (o.dir) agents = ['custom'];
+    else if (o.agent === 'all') agents = Object.keys(rel);
+    else if (o.agent) {
+      if (!rel[o.agent]) fail(EXIT.BLOCKED, c.red('--agent must be one of: claude, codex, cursor, all'));
+      agents = [o.agent];
+    } else {
+      agents = Object.keys(rel).filter((a) => markers[a]!.some((m) => fs.existsSync(path.join(process.cwd(), m)) || fs.existsSync(path.join(home, m))));
+      if (!agents.length) fail(EXIT.BLOCKED, c.red('No coding agent detected (.claude, .codex/.agents, .cursor).'), '   Choose one explicitly: fthisup install-skill --agent claude|codex|cursor|all');
+      console.log(`Detected: ${agents.join(', ')}`);
+    }
     const src = fileURLToPath(new URL('../../skills/fthisup', import.meta.url));
-    const dest = path.join(base, 'fthisup');
     if (!fs.existsSync(path.join(src, 'SKILL.md'))) fail(EXIT.ENV, c.red(`Skill files not found at ${src}`));
-    if (fs.existsSync(dest) && !o.force) fail(EXIT.BLOCKED, c.red(`${dest} already exists. Use --force to overwrite.`));
-    fs.mkdirSync(base, { recursive: true });
-    fs.cpSync(src, dest, { recursive: true });
-    const how: Record<string, string> = { claude: 'Type /fthisup (or /fthisup fix) in Claude Code.', codex: 'In Codex, mention $fthisup or pick it from /skills.', cursor: 'In Cursor Agent chat, type / and choose fthisup (or describe the task).' };
-    console.log(`Installed skill to ${dest}\n${how[o.agent]}\nRestart/refresh the agent if it does not appear.`);
+    const how: Record<string, string> = { claude: 'Claude Code: type /fthisup (or /fthisup fix)', codex: 'Codex: mention $fthisup or pick it from /skills', cursor: 'Cursor: type / in Agent chat and choose fthisup', custom: 'Load it with your agent\'s skill mechanism' };
+    let failed = false;
+    for (const agent of agents) {
+      const base = o.dir ? path.resolve(o.dir) : path.join(o.global ? home : process.cwd(), rel[agent]!);
+      const dest = path.join(base, 'fthisup');
+      if (fs.existsSync(dest) && !o.force) { console.error(c.yellow(`Skipped ${agent}: ${dest} already exists (use --force to overwrite).`)); failed = true; continue; }
+      fs.mkdirSync(base, { recursive: true });
+      fs.cpSync(src, dest, { recursive: true });
+      console.log(`Installed to ${dest}\n   ${how[agent]}`);
+    }
+    console.log('Restart the agent session if the skill does not appear.');
+    if (failed) process.exitCode = EXIT.BLOCKED;
   });
 
 program.parseAsync(process.argv).catch(handleKnown);
