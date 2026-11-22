@@ -1,0 +1,5 @@
+node_modules
+dist
+fthisup-results
+*.tgz
+.DS_Store

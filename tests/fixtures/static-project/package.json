@@ -1,0 +1,2 @@
+{ "name": "static-fixture", "scripts": { "dev": "next dev -p 3456", "start": "next start" },
+  "dependencies": { "next": "14.0.0", "react": "18.0.0", "next-auth": "4.0.0", "axios": "1.0.0" }, "devDependencies": { "vitest": "1.0.0", "typescript": "5.0.0" } }

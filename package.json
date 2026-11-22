@@ -1,0 +1,61 @@
+{
+  "name": "fthisup",
+  "version": "0.1.0",
+  "description": "Your AI built it. Now let another AI try to destroy it. A local, real-execution application breaker for AI-built web apps.",
+  "keywords": [
+    "testing",
+    "qa",
+    "playwright",
+    "ai",
+    "agent-skills",
+    "claude-code",
+    "codex",
+    "cursor",
+    "chaos-testing",
+    "e2e"
+  ],
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "fthisup": "dist/cli/index.js"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "skills",
+    "docs",
+    "README.md",
+    "LICENSE",
+    "SECURITY.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json && node scripts/postbuild.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && vitest run",
+    "test:unit": "vitest run tests/unit",
+    "test:e2e": "vitest run tests/integration",
+    "prepublishOnly": "npm test"
+  },
+  "dependencies": {
+    "commander": "^12.1.0",
+    "playwright": "^1.49.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.8"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Joseph1-H/FThisUp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Joseph1-H/FThisUp/issues"
+  },
+  "homepage": "https://github.com/Joseph1-H/FThisUp#readme"
+}
