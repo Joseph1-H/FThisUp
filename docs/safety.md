@@ -13,6 +13,13 @@ FThisUp is for applications you own or are explicitly authorized to test. The ru
 | `169.254.x.x`, metadata hostnames | Never tested |
 | `ftp:`, `file:`, URLs with embedded credentials | Refused |
 
+## Project scope: only the project at hand
+- **Project root.** FThisUp walks up from the current directory to the nearest project marker (`package.json`, `pyproject.toml`, `.git`, `fthisup.config.json`, ...). It refuses to run if none is found, and never treats your home directory or `/` as a project. All static scanning is limited to that root.
+- **Paths stay inside.** `--output`, `--config`, `--scenarios`, `--input` and the config's `output` must resolve inside the project (symlinks are resolved, so a link cannot escape).
+- **The target must be this project's app.** For a `--url` or an auto-detected server, FThisUp looks up which process owns the port (via `ss`/`lsof`, best effort on Linux/macOS) and refuses it if that process was started from a different project. Auto-detection silently skips such servers. Servers started from inside the project, or from a monorepo parent, are accepted. A `"url"` in the project's own `fthisup.config.json` counts as an explicit declaration (for Docker or other setups where the owner can't be determined).
+- **Other local servers the app calls** (e.g. a separate API port) are allowed only if they don't belong to another project.
+- Limits: the owner check is unavailable on Windows or without `ss`/`lsof` (then only the explicit-declaration rule applies), and it cannot see inside containers.
+
 ## Per-request enforcement
 Every request the browser makes passes through the guard:
 - Only the target origin (plus other **loopback** ports when the target is loopback, because dev UIs and APIs often run on separate ports, plus hosts you allow-listed) is contacted. **Third-party origins are aborted**, including analytics, CDNs and APIs your app calls. `allowThirdPartyAssets: true` permits third-party *GET* scripts/styles/fonts/images only.

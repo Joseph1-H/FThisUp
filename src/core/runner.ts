@@ -11,6 +11,7 @@ import type { LiveDiscovery, Manifest, ProjectDiscovery } from '../discovery/typ
 import { analyzeStatic } from '../analysis/static.js';
 import { executeScenario, type ExecEnv, type TestAccount } from '../engines/playwright/executor.js';
 import { evaluateTarget, SafetyGuard, type TargetDecision } from '../safety/policy.js';
+import { foreignPortChecker } from '../safety/scope.js';
 import { redactDeep } from '../safety/redact.js';
 import { generateScenarios } from '../scenarios/generate.js';
 import type { Scenario } from '../scenarios/schema.js';
@@ -73,7 +74,7 @@ export interface Plan {
 
 export async function plan(opts: RunOptions, browser: Browser, decision: TargetDecision): Promise<Plan> {
   const { config } = opts;
-  const guard = new SafetyGuard(decision, config);
+  const guard = new SafetyGuard(decision, config, { isForeignPort: foreignPortChecker(opts.cwd) });
   opts.onStage?.('Discovering application...');
   const project = discoverProject(opts.cwd);
   const staticFindings = opts.skipStatic ? [] : analyzeStatic(opts.cwd).findings;
@@ -133,7 +134,7 @@ export async function runTests(opts: RunOptions): Promise<{ results: RunResults;
       return { results: emptyResults(opts, decision, browser, startedAt, started, p), manifest, plan: p };
     }
 
-    const guard = new SafetyGuard(decision, config);
+    const guard = new SafetyGuard(decision, config, { isForeignPort: foreignPortChecker(opts.cwd) });
     const account = readAccount(config);
     const env: ExecEnv = { browser, guard, config, account };
     const secrets = account ? [account.username, account.password] : [];

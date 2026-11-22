@@ -18,6 +18,8 @@ import { writeReport } from '../reporting/html.js';
 import { readResults, writeManifest, writeResultsJson } from '../reporting/json.js';
 import type { Manifest } from '../discovery/types.js';
 import { detectLocalUrl } from '../utils/ports.js';
+import { confine, findProjectRoot, ProjectScopeError } from '../utils/project-root.js';
+import { checkTargetOwnership, foreignPortChecker } from '../safety/scope.js';
 import { VERSION } from '../utils/version.js';
 import { BANNER, CATEGORY_LABEL, c, clearProgress, printBanner, progressLine, tag } from './ui.js';
 
@@ -50,7 +52,29 @@ function fail(code: number, ...lines: string[]): never {
   process.exit(code);
 }
 
+/** FThisUp only ever works on the project it is run in. */
+function requireProject(): string {
+  try { return findProjectRoot(process.cwd()); }
+  catch (e) { fail(EXIT.BLOCKED, c.red(`\n   ${(e as Error).message}`)); }
+}
+
+function scoped(root: string, p: string, label: string): string {
+  try { return confine(root, p, label); }
+  catch (e) { fail(EXIT.BLOCKED, c.red(`\n   ${(e as Error).message}`)); }
+}
+
+function assertOwnTarget(url: string, root: string, source: 'cli' | 'config' | 'auto') {
+  if (source === 'config') return; // declared inside the project's own config: explicit statement of ownership
+  const o = checkTargetOwnership(url, root);
+  if (!o.ok) {
+    fail(EXIT.BLOCKED, c.red(`\n   Blocked: ${url} does not look like this project's app: ${o.reason}`),
+      '   FThisUp only tests the project it is run in. If this really is your app (e.g. it runs in Docker or from another folder),',
+      '   declare it explicitly: put "url" in fthisup.config.json inside this project.');
+  }
+}
+
 function handleKnown(e: unknown): never {
+  if (e instanceof ProjectScopeError) fail(EXIT.BLOCKED, c.red(`\n   ${e.message}`));
   if (e instanceof ConfigError) fail(EXIT.BLOCKED, c.red(`Configuration error: ${e.message}`));
   if (e instanceof TargetBlockedError) {
     fail(EXIT.BLOCKED, c.red(`\n   Blocked by safety policy: ${e.decision.reason}`), ...(e.decision.hint ? [`   ${e.decision.hint}`] : []), '   Nothing was tested.');
@@ -67,19 +91,24 @@ async function resolveUrl(cwd: string, config: FThisUpConfig, explicit?: string)
   if (explicit) return explicit;
   if (config.url) return config.url;
   const project = discoverProject(cwd);
-  return detectLocalUrl(project.likelyPort?.value);
+  const foreign = foreignPortChecker(cwd);
+  return detectLocalUrl(project.likelyPort?.value, (port) => !foreign(port));
 }
 
 async function testCommand(o: TestOpts) {
-  const cwd = process.cwd();
+  const cwd = requireProject();
   try {
+    if (o.config) scoped(cwd, o.config, '--config');
+    if (o.scenarios) scoped(cwd, o.scenarios, '--scenarios');
     const { config: fileCfg } = loadConfig(cwd, o.config);
     const config = applyOverrides(fileCfg, o);
+    scoped(cwd, config.output, 'output directory');
     const quiet = !!o.quiet;
     if (!quiet) printBanner();
 
     let app: RunningApp | undefined;
     let url = await resolveUrl(cwd, config, o.url);
+    if (url) assertOwnTarget(url, cwd, o.url ? 'cli' : config.url ? 'config' : 'auto');
     if (o.start) {
       if (!config.startCommand) fail(EXIT.BLOCKED, c.red('   --start needs "startCommand" in fthisup.config.json.'));
       if (!url) fail(EXIT.UNREACHABLE, c.red('   --start needs a target URL (--url or "url" in the config).'));
@@ -176,19 +205,23 @@ addTestOptions(program.command('test', { isDefault: true }).description('Run rea
 program.command('scan').description('Analyze the project and write a discovery manifest (confirmed vs inferred)')
   .option('--url <url>', 'also crawl this running app').option('--no-live', 'static analysis only').option('--output <dir>', 'output directory', './fthisup-results')
   .option('--config <file>').option('--json', 'print the manifest to stdout').action(async (o: { url?: string; live: boolean; output: string; config?: string; json?: boolean }) => {
-    const cwd = process.cwd();
+    const cwd = requireProject();
     try {
+      if (o.config) scoped(cwd, o.config, '--config');
+      scoped(cwd, o.output, 'output directory');
       const { config } = loadConfig(cwd, o.config);
       const project = discoverProject(cwd);
       const warnings = analyzeStatic(cwd).findings;
       let live: Manifest['live'] = null;
       if (o.live) {
-        const url = o.url ?? config.url ?? (await detectLocalUrl(project.likelyPort?.value));
+        const foreign = foreignPortChecker(cwd);
+        const url = o.url ?? config.url ?? (await detectLocalUrl(project.likelyPort?.value, (port) => !foreign(port)));
         if (url) {
           const d = evaluateTarget(url, config);
           if (!d.allowed) throw new TargetBlockedError(d);
+          assertOwnTarget(url, cwd, o.url ? 'cli' : config.url ? 'config' : 'auto');
           const browser = await launchBrowser(config);
-          try { live = await discoverLive(browser, new SafetyGuard(d, config), { maxPages: config.maxPages, excludeRoutes: config.excludeRoutes, timeout: Math.min(config.timeout, 15000) }); }
+          try { live = await discoverLive(browser, new SafetyGuard(d, config, { isForeignPort: foreignPortChecker(cwd) }), { maxPages: config.maxPages, excludeRoutes: config.excludeRoutes, timeout: Math.min(config.timeout, 15000) }); }
           finally { await browser.close(); }
         } else if (!o.json) console.log(c.gray('   No running app found; static analysis only (use --url to crawl a running app).'));
       }
@@ -217,15 +250,16 @@ program.command('report').description('Generate the HTML report from previously 
   .option('--input <dir>', 'results directory', './fthisup-results').option('--output <dir>', 'where to write report.html (default: same as input)')
   .action((o: { input: string; output?: string }) => {
     try {
-      const inDir = path.resolve(process.cwd(), o.input);
+      const root = requireProject();
+      const inDir = scoped(root, o.input, '--input');
       const results = readResults(inDir);
-      const file = writeReport(path.resolve(process.cwd(), o.output ?? o.input), results);
+      const file = writeReport(scoped(root, o.output ?? o.input, '--output'), results);
       console.log(`Report written: ${file}`);
     } catch (e) { fail(EXIT.BLOCKED, c.red((e as Error).message)); }
   });
 
 program.command('init').description(`Create ${CONFIG_FILE} with detected project settings`).option('--force', 'overwrite an existing file').action((o: { force?: boolean }) => {
-  const cwd = process.cwd();
+  const cwd = requireProject();
   const file = path.join(cwd, CONFIG_FILE);
   if (fs.existsSync(file) && !o.force) fail(EXIT.BLOCKED, c.red(`${CONFIG_FILE} already exists. Use --force to overwrite.`));
   const p = discoverProject(cwd);
@@ -251,6 +285,9 @@ program.command('doctor').description('Check Node, Playwright browsers, configur
     console.log(c.red(BANNER.split('\n').slice(0, 1).join('')) + `  ${c.bold('doctor')}\n`);
     const major = Number(process.versions.node.split('.')[0]);
     major >= 20 ? ok(`Node.js ${process.version}`) : no(`Node.js ${process.version} is too old`, 'Install Node.js 20 or newer.');
+    let root = process.cwd();
+    try { root = findProjectRoot(process.cwd()); ok(`Project root: ${root}`); }
+    catch (e) { no('Not inside a project', (e as Error).message); }
     let exe = '';
     try { exe = chromium.executablePath(); } catch { /* ignore */ }
     if (!exe || !fs.existsSync(exe)) {
@@ -262,29 +299,32 @@ program.command('doctor').description('Check Node, Playwright browsers, configur
     }
     let cfg: FThisUpConfig | null = null;
     try {
-      const l = loadConfig(process.cwd(), o.config);
+      const l = loadConfig(root, o.config);
       cfg = l.config;
-      ok(l.path ? `Config ${path.relative(process.cwd(), l.path)} is valid` : `No ${CONFIG_FILE} (defaults in use; run \`npx fthisup init\` to create one)`);
+      ok(l.path ? `Config ${path.relative(root, l.path)} is valid` : `No ${CONFIG_FILE} (defaults in use; run \`npx fthisup init\` to create one)`);
     } catch (e) { no((e as Error).message.split('\n')[0]!, `Fix ${CONFIG_FILE} (see docs/configuration.md).`); }
     if (exe && fs.existsSync(exe) && cfg) {
       try { const b = await launchBrowser(cfg); ok(`Chromium ${b.version()} launches`); await b.close(); }
       catch (e) { no((e as Error).message, process.platform === 'linux' ? 'Run: npx playwright install-deps chromium (may need sudo)' : 'Reinstall: npx playwright install chromium'); }
     }
-    const url = o.url ?? cfg?.url ?? (await detectLocalUrl());
+    const foreign = foreignPortChecker(root);
+    const url = o.url ?? cfg?.url ?? (await detectLocalUrl(undefined, (port) => !foreign(port)));
     if (url && cfg) {
       const d = evaluateTarget(url, cfg);
       if (!d.allowed) warn(`Target ${url} is blocked by the safety policy: ${d.reason}`);
       else {
+        const own = checkTargetOwnership(url, root);
+        if (!own.ok) warn(`${url} does not look like this project's app: ${own.reason} FThisUp will refuse it unless "url" is set in ${CONFIG_FILE}.`);
         const p = await probeUrl(url, 4000);
         p.ok ? ok(`Application reachable at ${url} (${p.detail})`) : warn(`Application not reachable at ${url} (${p.detail}). Start it before running tests.`);
       }
     } else warn('No target URL configured or detected on common local ports (start your dev server or pass --url).');
     try {
-      const out = path.resolve(process.cwd(), cfg?.output ?? './fthisup-results');
+      const out = confine(root, cfg?.output ?? './fthisup-results', 'output directory');
       fs.mkdirSync(out, { recursive: true });
       fs.accessSync(out, fs.constants.W_OK);
-      ok(`Output directory writable (${path.relative(process.cwd(), out) || '.'})`);
-    } catch { no('Output directory is not writable', 'Choose another directory with --output.'); }
+      ok(`Output directory writable (${path.relative(root, out) || '.'})`);
+    } catch (e) { no((e as Error) instanceof ProjectScopeError ? (e as Error).message : 'Output directory is not writable', 'Use a directory inside the project (--output / "output" in the config).'); }
     if (cfg?.auth) {
       const u = !!process.env[cfg.auth.usernameEnv], pw = !!process.env[cfg.auth.passwordEnv];
       u && pw ? ok('Auth test credentials found in environment') : warn(`Auth is configured but $${cfg.auth.usernameEnv} / $${cfg.auth.passwordEnv} are not both set; auth scenarios will be skipped.`);

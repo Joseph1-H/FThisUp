@@ -16,6 +16,9 @@ If the first argument is `fix`, stop here and follow [references/fix.md](referen
 
 Run the CLI as `npx fthisup ...` (or `fthisup ...` / `node_modules/.bin/fthisup` if installed). If `npx fthisup` cannot be found because the package is not on npm, use `npx --yes github:Joseph1-H/FThisUp ...` in its place everywhere below. Run from the project root.
 
+## Scope: this project only
+FThisUp works on **the project in the current working directory and nothing else.** It refuses to run outside a project (or in your home directory), keeps all reads/writes inside the project, and refuses a target server that belongs to a different project. Do not try to work around this: never `cd` elsewhere to run it, never point it at another project's server or at ports you did not start for this project, never use `--url` for an app from a different repo. If it reports a scope block, relay the reason and ask the user. The only supported way to declare an unusual setup (e.g. the app runs in Docker) is a `"url"` in this project's own `fthisup.config.json`, and only if the user confirms it is this project's app.
+
 ## 1. Identify the project
 Read `package.json` (or the equivalent) to learn the framework, the dev command and the port. Check for an existing `fthisup.config.json`. If a URL was given as an argument, use it.
 

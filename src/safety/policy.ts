@@ -135,6 +135,7 @@ export class SafetyGuard {
   constructor(
     readonly decision: TargetDecision,
     private readonly config: Pick<FThisUpConfig, 'safety'>,
+    private readonly scope: { isForeignPort?: (port: number) => boolean } = {},
   ) {
     if (!decision.allowed || !decision.origin) throw new Error('SafetyGuard requires an allowed target decision');
     this.allowedOrigins.add(decision.origin);
@@ -156,7 +157,8 @@ export class SafetyGuard {
   private isAllowedOrigin(u: URL): boolean {
     if (this.allowedOrigins.has(u.origin)) return true;
     // Local development commonly splits UI and API across loopback ports.
-    if (this.decision.targetClass === 'loopback' && isLoopbackHost(u.hostname)) return true;
+    // ...but never a local server that belongs to a DIFFERENT project (when its owner can be determined).
+    if (this.decision.targetClass === 'loopback' && isLoopbackHost(u.hostname)) return !this.scope.isForeignPort?.(Number(u.port));
     return this.allowedHostnames.has(u.hostname.toLowerCase()) || this.allowedHostnames.has(u.host.toLowerCase());
   }
 
