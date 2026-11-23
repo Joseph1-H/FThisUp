@@ -125,6 +125,7 @@ fthisup report                # regenerate report.html from results.json
 fthisup doctor                # which adapters can run right now, and what each missing prerequisite needs
 fthisup init                  # write fthisup.config.json
 fthisup install-skill         # copy the agent skill into Claude Code / Codex / Cursor
+fthisup update                # update FThisUp to the latest version (says so if you already have it); --check only looks
 ```
 
 Options: `--url` `--api-url` `--adapter <ids...>` `--all` `--mode safe|thorough` `--max-tests` `--timeout` `--report` `--output` `--config` `--scenarios` `--start` `--no-static` `--exit-zero`. Exit codes: 0 ok · 1 confirmed issues · 2 blocked by safety/config · 3 target unreachable or nothing could run · 4 an explicitly requested adapter cannot run / environment problem. See [docs/configuration.md](docs/configuration.md).
@@ -140,7 +141,7 @@ Options: `--url` `--api-url` `--adapter <ids...>` `--all` `--mode safe|thorough`
 
 | Agent | Install | Invoke |
 |---|---|---|
-| Claude Code | `git clone --depth 1 https://github.com/Joseph1-H/FThisUp ~/.claude/skills/fthisup` or `fthisup install-skill` | `/fthisup`, `/fthisup fix` |
+| Claude Code | `git clone --depth 1 https://github.com/Joseph1-H/FThisUp ~/.claude/skills/fthisup` or `fthisup install-skill` | `/fthisup`, `/fthisup fix`, `/fthisup update` |
 | OpenAI Codex | `fthisup install-skill --agent codex` (`.agents/skills`) | `$fthisup` or `/skills` |
 | Cursor | `fthisup install-skill --agent cursor` (`.cursor/skills`) | `/` picker → `fthisup` |
 

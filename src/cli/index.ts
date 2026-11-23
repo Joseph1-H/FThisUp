@@ -23,6 +23,7 @@ import { detectLocalUrl } from '../utils/ports.js';
 import { confine, findProjectRoot, ProjectScopeError } from '../utils/project-root.js';
 import { checkTargetOwnership, foreignPortChecker } from '../safety/scope.js';
 import { VERSION } from '../utils/version.js';
+import { findInstalls, selfRoot, updateCheckout, REPO_URL } from './update.js';
 import { BANNER, CATEGORY_LABEL, c, clearProgress, printBanner, progressLine, tag } from './ui.js';
 
 const EXIT = { OK: 0, BUGS: 1, BLOCKED: 2, UNREACHABLE: 3, ENV: 4 } as const;
@@ -433,6 +434,33 @@ program.command('install-skill').description('Copy the FThisUp Agent Skill into 
     }
     console.log('Restart the agent session if the skill does not appear.');
     if (failed) process.exitCode = EXIT.BLOCKED;
+  });
+
+program.command('update').description('Update FThisUp to the latest version from GitHub (says so if you are already up to date)')
+  .option('--check', 'only check whether a newer version exists; change nothing')
+  .action((o: { check?: boolean }) => {
+    const { checkouts, copies } = findInstalls({ selfRoot: selfRoot(), cwd: process.cwd() });
+    console.log(`\n   FThisUp ${VERSION}: checking ${REPO_URL} ...\n`);
+    let bad = false, changed = false, available = false;
+    for (const dir of checkouts) {
+      const r = updateCheckout(dir, { checkOnly: o.check });
+      const icon = r.state === 'up-to-date' ? c.green('✓') : r.state === 'updated' ? c.green('↑') : r.state === 'available' ? c.yellow('↑') : r.state === 'skipped' ? c.yellow('•') : c.red('✗');
+      console.log(`   ${icon} ${dir}\n     ${r.message}`);
+      if (r.state === 'error') bad = true;
+      if (r.state === 'updated') changed = true;
+      if (r.state === 'available') available = true;
+    }
+    for (const dir of copies) console.log(`   ${c.yellow('•')} ${dir}\n     copied install (not a git clone): refresh with "fthisup install-skill --global --force"`);
+    if (!checkouts.length) {
+      console.log(`   ${c.yellow('•')} This copy of FThisUp is not a git checkout (e.g. a temporary npx cache), so it cannot update itself.`);
+      console.log('     Run it through npx to always get the newest version: npx --yes github:Joseph1-H/FThisUp@latest <command>');
+      console.log(`     Or install a permanent copy: git clone ${REPO_URL} && cd FThisUp && npm install && npm link`);
+    }
+    if (changed) console.log('\n   Restart your agent session so it picks up the new skill.');
+    else if (!bad && !available && checkouts.length) console.log(`\n   ${c.green('No new version. You are on the latest.')}`);
+    if (available) console.log('\n   Run "fthisup update" to install it.');
+    console.log('');
+    process.exitCode = bad ? EXIT.ENV : EXIT.OK;
   });
 
 program.parseAsync(process.argv).catch(handleKnown);
