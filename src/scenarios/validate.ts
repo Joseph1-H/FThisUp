@@ -21,6 +21,8 @@ const DUMMY_ORIGIN = 'http://fthisup.invalid';
  * vocabulary; this adds semantic checks. Nothing here ever evaluates scenario content.
  */
 export function validateScenarios(input: unknown, opts: { forceOrigin?: 'agent' | 'heuristic' } = {}): ValidationOutcome {
+  const sectionsOnly = !!input && typeof input === 'object' && !Array.isArray(input) && !('scenarios' in (input as object)) && ('cliScenarios' in (input as object) || 'apiScenarios' in (input as object));
+  if (sectionsOnly) return { valid: [], rejected: [] };
   const raw: unknown[] = Array.isArray(input)
     ? input
     : input && typeof input === 'object' && Array.isArray((input as { scenarios?: unknown }).scenarios)

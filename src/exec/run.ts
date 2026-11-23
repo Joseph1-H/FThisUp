@@ -59,6 +59,8 @@ export interface RunSpec {
   scratch?: string;
   /** apply prlimit CPU/file-size limits where available */
   limits?: boolean;
+  /** keep stdin open (no EOF) until the process exits, e.g. to test interruption of an input-waiting program */
+  keepStdinOpen?: boolean;
 }
 
 export interface RunOutcome {
@@ -111,7 +113,7 @@ export function runProcess(spec: RunSpec): Promise<RunOutcome> {
     if (mode !== 'off') {
       const info = sandboxInfo();
       if (info.available && spec.scratch) {
-        const w = wrapInSandbox(file, args, { scratch: spec.scratch, cwd: spec.cwd });
+        const w = wrapInSandbox(file, args, { scratch: spec.scratch, cwd: spec.cwd, projectRoot: spec.projectRoot });
         file = w.file; args = w.args; sandboxed = true;
       } else if (mode === 'require') {
         return resolve({ exitCode: null, signal: null, stdout: '', stderr: '', timedOut: false, truncated: false, durationMs: 0, spawnError: `sandbox required but unavailable: ${info.reason}`, sandboxed: false, command: display });
@@ -133,7 +135,7 @@ export function runProcess(spec: RunSpec): Promise<RunOutcome> {
     child.stdout.on('data', (d: Buffer) => { out = take(out, d); });
     child.stderr.on('data', (d: Buffer) => { err = take(err, d); });
     child.stdin.on('error', () => { /* child closed stdin early (EPIPE): fine */ });
-    try { child.stdin.end(spec.stdin ?? undefined); } catch { /* ignore */ }
+    try { if (spec.keepStdinOpen) { if (spec.stdin) child.stdin.write(spec.stdin); } else child.stdin.end(spec.stdin ?? undefined); } catch { /* ignore */ }
     child.on('error', (e) => { spawnError = e.message; });
     const timer = setTimeout(() => {
       timedOut = true;
