@@ -1,5 +1,5 @@
 import type { Action, Expectation, Scenario } from '../scenarios/schema.js';
-import type { Confidence, ExpectationResult, Finding, FindingStatus, Evidence, Severity, RunSummary, TestResult } from './types.js';
+import type { Confidence, ExpectationResult, FailureType, Finding, FindingStatus, Evidence, Severity, RunSummary, TestResult } from './types.js';
 import { CATEGORIES } from './types.js';
 import { maxSeverity } from '../engines/playwright/expectations.js';
 
@@ -49,6 +49,22 @@ function prettySel(sel: string): string {
   if ((m = sel.match(/^form >> nth=(\d+)$/))) return `form #${Number(m[1]) + 1}`;
   if ((m = sel.match(/^:is\(button,\[role=button\]\) >> nth=(\d+)$/))) return `button #${Number(m[1]) + 1} on the page`;
   return sel;
+}
+
+const FAILURE_BY_EXPECTATION: Record<Expectation['type'], FailureType> = {
+  noUncaughtExceptions: 'unhandled-exception', noBlankPage: 'ui-interaction', pageStatusOk: 'broken-navigation', noRedirectLoop: 'broken-navigation',
+  noMissingResources: 'broken-navigation', noServerErrors: 'input-validation', noHorizontalOverflow: 'layout-defect', noScriptInjection: 'security-weakness',
+  noUnexpectedAuthRedirect: 'auth-error', maxMutatingRequests: 'invalid-state-transition', noRequestWhenInvalid: 'input-validation', visibleFeedbackOnFailure: 'network-error-handling',
+  stillInteractive: 'hang', urlNotMatches: 'broken-navigation', gatedContent: 'auth-error', selectorNotVisible: 'auth-error', selectorVisible: 'ui-interaction', loginFormVisible: 'auth-error',
+};
+const SEV_RANK: Record<Severity, number> = { critical: 4, high: 3, medium: 2, low: 1, info: 0 };
+
+/** failure type of the most severe failing expectation; network scenarios about API failures are network-error-handling. */
+export function failureTypeFor(s: Scenario, failing: ExpectationResult[]): FailureType {
+  const worst = [...failing].sort((a, b) => SEV_RANK[b.severity] - SEV_RANK[a.severity])[0];
+  const t = FAILURE_BY_EXPECTATION[(worst?.type ?? 'noUncaughtExceptions') as Expectation['type']];
+  if (s.category === 'network-failure' && (t === 'unhandled-exception' || t === 'ui-interaction' || t === 'hang')) return 'network-error-handling';
+  return t;
 }
 
 export function humanizeSteps(s: Scenario, origin: string): string[] {
@@ -112,6 +128,10 @@ export function buildFinding(args: {
     evidence,
     suggestedFix: fix,
     source: 'execution',
+    adapter: 'web',
+    failureType: failureTypeFor(s, failing),
+    evidenceKind: 'observed-defect',
+    scope: `web ${s.component ?? s.target}`,
   };
 }
 

@@ -1,0 +1,41 @@
+   Compiling rust_buggy v0.1.0 (/work/rust-buggy)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.07s
+     Running unittests src/lib.rs (/work/target/debug/deps/rust_buggy-bf55f92345b344a9)
+
+running 3 tests
+test tests::first_of_empty ... FAILED
+test tests::adds ... FAILED
+test tests::ok_test ... ok
+
+failures:
+
+---- tests::first_of_empty stdout ----
+
+thread 'tests::first_of_empty' (13893) panicked at src/lib.rs:2:34:
+index out of bounds: the len is 0 but the index is 0
+
+---- tests::adds stdout ----
+
+thread 'tests::adds' (13892) panicked at src/lib.rs:6:25:
+assertion `left == right` failed
+  left: -1
+ right: 5
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    tests::adds
+    tests::first_of_empty
+
+test result: FAILED. 1 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `--lib`
+   Doc-tests rust_buggy
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: 1 target failed:
+    `--lib`
+exit 101

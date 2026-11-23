@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-const MARKERS = ['fthisup.config.json', 'package.json', 'pyproject.toml', 'requirements.txt', 'pubspec.yaml', 'go.mod', 'Cargo.toml', 'composer.json', 'Gemfile', '.git'];
+const MARKERS = ['fthisup.config.json', 'package.json', 'pyproject.toml', 'requirements.txt', 'setup.py', 'pubspec.yaml', 'go.mod', 'Cargo.toml', 'composer.json', 'Gemfile', 'pom.xml', 'build.gradle', 'build.gradle.kts', 'CMakeLists.txt', 'meson.build', 'Makefile', 'Package.swift', 'project.godot', '.git'];
 
 const real = (p: string) => { try { return fs.realpathSync(p); } catch { return path.resolve(p); } };
 
@@ -20,7 +20,7 @@ export function findProjectRoot(start: string): string {
     dir = parent;
   }
   throw new ProjectScopeError(
-    `${start} is not inside a project (no package.json, pyproject.toml, requirements.txt, pubspec.yaml, .git, ... found, and your home directory / filesystem root are never treated as a project). FThisUp only works on the project you run it in: cd into it first.`,
+    `${start} is not inside a project (no package.json, pyproject.toml, Cargo.toml, go.mod, pubspec.yaml, CMakeLists.txt, pom.xml, .git, ... found, and your home directory / filesystem root are never treated as a project). FThisUp only works on the project you run it in: cd into it first.`,
   );
 }
 

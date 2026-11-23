@@ -20,3 +20,11 @@ export function readResults(dir: string): RunResults {
   if (!fs.existsSync(f)) throw new Error(`No results found at ${f}. Run \`fthisup test\` first.`);
   return JSON.parse(fs.readFileSync(f, 'utf8')) as RunResults;
 }
+
+export function writeJsonFile(dir: string, name: string, data: unknown): string {
+  if (!/^[\w.-]+\.json$/.test(name)) throw new Error(`refusing to write unexpected artifact name ${name}`);
+  fs.mkdirSync(dir, { recursive: true });
+  const f = path.join(dir, name);
+  fs.writeFileSync(f, JSON.stringify(data, null, 2), 'utf8');
+  return f;
+}
