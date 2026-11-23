@@ -1,6 +1,6 @@
 # Configuration
 
-`npx fthisup init` writes `fthisup.config.json` (strict JSON, validated with Zod; unknown keys are errors). CLI flags override the file.
+`fthisup init` writes `fthisup.config.json` (strict JSON, validated with Zod; unknown keys are errors). CLI flags override the file.
 
 ```json
 {

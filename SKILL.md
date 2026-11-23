@@ -14,7 +14,7 @@ You orchestrate the **FThisUp CLI**. The CLI detects the project, picks adapters
 
 If the first argument is `fix`, stop here and follow [references/fix.md](references/fix.md) instead.
 
-Run the CLI as `npx fthisup ...` (or `fthisup ...` / `node_modules/.bin/fthisup` if installed). If `npx fthisup` cannot be found because the package is not on npm, use `npx --yes github:Joseph1-H/FThisUp ...` in its place everywhere below. Run from the project root.
+FThisUp is **not published to npm**, so plain `npx fthisup` does not work. Wherever this skill says `fthisup <cmd>`, run `fthisup <cmd>` if it is on PATH (`fthisup --version`), otherwise `npx --yes github:Joseph1-H/FThisUp <cmd>`. Run from the project root.
 
 ## Scope: this project only
 FThisUp works on **the project in the current working directory and nothing else.** It refuses to run outside a project (or in your home directory), keeps all reads/writes inside the project, and refuses a target server that belongs to a different project. Do not work around this: never `cd` elsewhere to run it, never point it at another project's server, never use `--url`/`--api-url` for an app from a different repo. If it reports a scope block, relay the reason and ask the user. The only supported way to declare an unusual setup (e.g. the app runs in Docker) is a `"url"` in this project's own `fthisup.config.json`, and only if the user confirms it is this project's app.
@@ -30,29 +30,29 @@ Read the top-level layout (package.json, pyproject.toml, Cargo.toml, go.mod, pub
 
 ## 3. Check the environment
 ```bash
-npx fthisup doctor
+fthisup doctor
 ```
 This prints which adapters can run **right now** and what each missing prerequisite needs. Tell the user what is missing; **never install SDKs, dependencies or browsers yourself** (suggest e.g. `npx playwright install chromium`, `npm install`, `flutter pub get`, then let the user run them). Ask before starting the user's dev server (or use `--start` when `startCommand` is configured).
 
 ## 4. Discover
 ```bash
-npx fthisup scan
+fthisup scan
 ```
 Writes `fthisup-results/project.json` (components, languages, frameworks, test commands, availability) and `discovery.json` (web routes/forms, static warnings). Facts marked `confirmed` came from manifests or the running app; `inferred` ones are heuristics.
 
 ## 5. (Optional) Propose extra scenarios
 Only when discovery shows flows the deterministic generators cannot know. Write them to `fthisup-results/agent-scenarios.json` using **only** the typed vocabulary in [references/scenario-format.md](references/scenario-format.md) (`scenarios` for web, `cliScenarios`, `apiScenarios`): no shell, no JavaScript, no executables, no hosts. Validate without executing:
 ```bash
-npx fthisup test --dry-run --scenarios fthisup-results/agent-scenarios.json
+fthisup test --dry-run --scenarios fthisup-results/agent-scenarios.json
 ```
 Fix anything listed as `[REJECTED]`. Skip this step when the defaults are enough.
 
 ## 6. Run the real tests
 ```bash
-npx fthisup test                      # automatic: every applicable adapter
-npx fthisup test --url <url>          # also test the running web app / API
-npx fthisup test --adapter api,cli    # only these adapters (python, javascript, flutter, rust, go, java, cpp, swift, godot, web, api, cli, desktop)
-npx fthisup test --all                # include opt-in adapters (desktop builds and launches the app)
+fthisup test                      # automatic: every applicable adapter
+fthisup test --url <url>          # also test the running web app / API
+fthisup test --adapter api,cli    # only these adapters (python, javascript, flutter, rust, go, java, cpp, swift, godot, web, api, cli, desktop)
+fthisup test --all                # include opt-in adapters (desktop builds and launches the app)
 ```
 Exit code `1` = confirmed issues, `2` = safety/config block, `3` = nothing could run (e.g. app unreachable), `4` = an explicitly selected adapter cannot run / environment problem. Sensitive actions (delete, purchase, sign-up, messaging, upload, irreversible) are **blocked by design**; do not add `approvedActions` yourself. If the user wants them, ask first and name exactly which action.
 

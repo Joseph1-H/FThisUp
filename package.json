@@ -68,5 +68,6 @@
   "bugs": {
     "url": "https://github.com/Joseph1-H/FThisUp/issues"
   },
-  "homepage": "https://github.com/Joseph1-H/FThisUp#readme"
+  "homepage": "https://github.com/Joseph1-H/FThisUp#readme",
+  "private": true
 }
