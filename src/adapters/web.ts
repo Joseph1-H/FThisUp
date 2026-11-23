@@ -4,7 +4,7 @@ import type { Capability, Finding, TestResult } from '../core/types.js';
 import { runTests, probeUrl } from '../core/runner.js';
 import { TargetBlockedError, TargetUnreachableError } from '../core/errors.js';
 import { evaluateTarget } from '../safety/policy.js';
-import type { AdapterOutcome, DetectionResult, ExecutionContext, ProjectContext, TestAdapter, TestOptions, TestPlan } from './types.js';
+import type { AdapterOutcome, DetectionResult, ExecutionContext, ProjectContext, TestAdapter, TestPlan } from './types.js';
 
 function chromiumInstalled(ctx: ProjectContext): boolean {
   if (ctx.config.browserChannel) return true;
@@ -37,6 +37,13 @@ export const webAdapter: TestAdapter = {
     const ids = comp.map((c) => c.id);
     if (!ctx.target.url) {
       return { applicable: comp.length > 0, confidence: comp.length ? 'medium' : 'low', components: ids, reason: comp.length ? 'web app detected in the project, but no running server was found' : 'no web app detected and no running server found' };
+    }
+    // the safety policy decides BEFORE any request is made: an unauthorized host is never even probed
+    const policy = evaluateTarget(ctx.target.url, ctx.config);
+    if (!policy.allowed) {
+      return ctx.target.source === 'cli'
+        ? { applicable: true, confidence: 'high', components: ids, reason: 'target URL supplied with --url (blocked by the safety policy; nothing will be contacted)' }
+        : { applicable: false, confidence: 'low', components: ids, reason: `target blocked by the safety policy: ${policy.reason}` };
     }
     if (comp.length) return { applicable: true, confidence: 'high', components: ids, reason: 'web framework detected and a server is running' };
     const kind = await rootKind(ctx.target.url);
@@ -90,7 +97,7 @@ export const webAdapter: TestAdapter = {
         artifacts: { 'discovery.json': manifest, 'rejected-scenarios': wp.rejected.length },
         coverage: results.coverage,
         safety: results.safety,
-        environment: { browser: results.environment.browser === 'chromium' ? `chromium ${results.environment.browserVersion}` : results.environment.browser, browserVersion: results.environment.browserVersion, headless: results.environment.headless },
+        environment: { browser: results.environment.browser, browserVersion: results.environment.browserVersion, headless: results.environment.headless },
       };
     } catch (e) {
       if (strict) throw e;

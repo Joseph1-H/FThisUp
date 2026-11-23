@@ -90,14 +90,6 @@ function handleKnown(e: unknown): never {
   fail(EXIT.ENV, c.red(`\n   Unexpected error: ${(e as Error).stack ?? e}`));
 }
 
-async function resolveUrl(cwd: string, config: FThisUpConfig, explicit?: string): Promise<string | null> {
-  if (explicit) return explicit;
-  if (config.url) return config.url;
-  const project = discoverProject(cwd);
-  const foreign = foreignPortChecker(cwd);
-  return detectLocalUrl(project.likelyPort?.value, (port) => !foreign(port));
-}
-
 async function testCommand(o: TestOpts) {
   const cwd = requireProject();
   try {
@@ -112,6 +104,7 @@ async function testCommand(o: TestOpts) {
 
     let app: RunningApp | undefined;
     if (o.url) assertOwnTarget(o.url, cwd, 'cli');
+    if (o.apiUrl) assertOwnTarget(o.apiUrl, cwd, 'cli');
     if (o.start) {
       const url = o.url ?? config.url;
       if (!config.startCommand) fail(EXIT.BLOCKED, c.red('   --start needs "startCommand" in fthisup.config.json.'));
@@ -225,7 +218,7 @@ function printSummary(results: import('../core/types.js').RunResults, reportPath
 }
 
 const program = new Command();
-program.name('fthisup').description('Your AI built it. Now let another AI try to destroy it.').version(VERSION, '-v, --version');
+program.name('fthisup').description('Your code works? Prove it. Attempts to break web apps, APIs, CLIs and libraries with real execution.').version(VERSION, '-v, --version');
 
 const addTestOptions = (cmd: Command) => cmd
   .option('--url <url>', 'target application URL (default: config "url", or auto-detected on localhost)')
@@ -274,6 +267,8 @@ program.command('scan').description('Analyze the project and write a discovery m
       }
       const manifest: Manifest = { schemaVersion: 1, generatedAt: new Date().toISOString(), project, live, warnings, legend: { confirmed: 'Read directly from a manifest/config file or observed in the running app.', inferred: 'Derived from naming conventions or regex heuristics; may be wrong.' } };
       const file = writeManifest(path.resolve(cwd, o.output), manifest);
+      const detected = detectProjectManifest(cwd);
+      writeJsonFile(path.resolve(cwd, o.output), 'project.json', detected);
       if (o.json) { console.log(JSON.stringify(manifest, null, 2)); return; }
       printBanner();
       const row = (k: string, v: string) => console.log(`   ${c.gray(k.padEnd(18))} ${v}`);
@@ -289,7 +284,15 @@ program.command('scan').description('Analyze the project and write a discovery m
       row('API integrations', String(project.apiIntegrations.length));
       row('Warnings', `${warnings.length} static heuristic ${c.gray('(unconfirmed)')}`);
       for (const n of project.notes) console.log(`   ${tag.warn()} ${n}`);
-      console.log(`\n   Manifest: ${file}\n`);
+      console.log(`\n   ${c.bold('Components')} ${c.gray('(candidate adapters; an adapter still has to confirm its prerequisites)')}`);
+      for (const comp of detected.components) {
+        console.log(`   ${comp.id.padEnd(22)} ${comp.languages.join('/')} · ${comp.roles.join('+') || 'unknown'}${comp.frameworks.length ? ` · ${comp.frameworks.slice(0, 3).join(', ')}` : ''}  ${c.gray(`→ ${comp.adapters.join(', ') || 'no adapter'}`)}`);
+        const tcs = [...comp.testCommands, ...comp.analyzers];
+        for (const tc of tcs) console.log(`     ${tc.available ? c.green('✓') : c.yellow('✗')} ${[tc.file, ...tc.args].join(' ')}${tc.available ? '' : c.gray(`  (${tc.reason})`)}`);
+        for (const nt of comp.notes) console.log(`     ${c.gray(nt)}`);
+      }
+      if (!detected.components.length) console.log(`   ${c.gray('no recognizable project files')}`);
+      console.log(`\n   Manifest: ${file}\n   Project:  ${path.join(path.resolve(cwd, o.output), 'project.json')}\n`);
     } catch (e) { handleKnown(e); }
   });
 
@@ -313,7 +316,7 @@ program.command('init').description(`Create ${CONFIG_FILE} with detected project
   const cfg: Record<string, unknown> = {
     url: `http://localhost:${p.likelyPort?.value ?? 3000}`,
     ...(p.startCommands[0] ? { startCommand: p.startCommands[0].value } : {}),
-    mode: 'safe', maxTests: 100, timeout: 30000, output: './fthisup-results', excludeRoutes: [],
+    mode: 'safe', maxTests: 100, timeout: 30000, output: './fthisup-results', excludeRoutes: [], autoDetect: true,
     safety: { environment: 'local', authorized: false, allowedHosts: [], approvedActions: [] },
   };
   fs.writeFileSync(file, JSON.stringify(cfg, null, 2) + '\n');
@@ -372,6 +375,22 @@ program.command('doctor').description('Check Node, Playwright browsers, configur
       fs.accessSync(out, fs.constants.W_OK);
       ok(`Output directory writable (${path.relative(root, out) || '.'})`);
     } catch (e) { no((e as Error) instanceof ProjectScopeError ? (e as Error).message : 'Output directory is not writable', 'Use a directory inside the project (--output / "output" in the config).'); }
+    if (cfg) {
+      try {
+        const { planRun } = await import('../core/orchestrator.js');
+        const pr = await planRun({ root, config: cfg, adapters: [], explicitUrl: o.url });
+        console.log(`\n   ${c.bold('Adapters')} ${c.gray('(what FThisUp can test in this project, right now)')}`);
+        for (const s of pr.selections) {
+          if (s.status === 'not-applicable') continue;
+          const mark = s.status === 'ran' ? c.green('ready      ') : s.status === 'skipped' ? c.gray('opt-in     ') : c.yellow(s.status.padEnd(11));
+          console.log(`     ${mark} ${s.adapter.id.padEnd(11)} ${c.gray(s.status === 'ran' ? s.adapter.name : s.reason ?? '')}`);
+          for (const m of s.plan?.missing ?? []) console.log(`                 ${c.gray('· ' + m.what)}${m.setup ? c.gray('  → ' + m.setup) : ''}`);
+        }
+        const { sandboxInfo } = await import('../exec/sandbox.js');
+        const sb = sandboxInfo();
+        console.log(`     ${sb.available ? c.green('sandbox    ') : c.yellow('no sandbox ')} ${c.gray(sb.available ? 'bubblewrap: CLI probing and function fuzzing are isolated' : `${sb.reason}; function fuzzing stays disabled unless safety.allowUnsandboxedFuzzing is true`)}`);
+      } catch (e) { warn(`could not plan adapters: ${(e as Error).message.split('\n')[0]}`); }
+    }
     if (cfg?.auth) {
       const u = !!process.env[cfg.auth.usernameEnv], pw = !!process.env[cfg.auth.passwordEnv];
       u && pw ? ok('Auth test credentials found in environment') : warn(`Auth is configured but $${cfg.auth.usernameEnv} / $${cfg.auth.passwordEnv} are not both set; auth scenarios will be skipped.`);

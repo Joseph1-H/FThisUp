@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { isLoopbackHost } from './policy.js';
 
 const cache = new Map<number, string | null>();
 const real = (p: string) => { try { return fs.realpathSync(p); } catch { return path.resolve(p); } };
@@ -54,6 +55,7 @@ export function foreignPortChecker(root: string): (port: number) => boolean {
 export function checkTargetOwnership(url: string, root: string): { ok: boolean; reason?: string } {
   let u: URL;
   try { u = new URL(url); } catch { return { ok: true }; }
+  if (!isLoopbackHost(u.hostname)) return { ok: true }; // ownership is about LOCAL ports; remote hosts are governed by the target policy
   const port = Number(u.port || (u.protocol === 'https:' ? 443 : 80));
   const owner = portOwnerCwd(port);
   if (owner === null || ownerBelongsToProject(owner, root)) return { ok: true };

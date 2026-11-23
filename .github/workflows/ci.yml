@@ -23,6 +23,7 @@ jobs:
       - run: npm ci
       - run: npx playwright install --with-deps chromium
       - run: npm run typecheck
+      - run: npm run lint
       - run: npm test
       - name: Verify the package contents
         if: matrix.os == 'ubuntu-latest' && matrix.node == 22

@@ -8,9 +8,8 @@ import { pythonExe, which } from '../exec/tools.js';
 import { classifySensitivity } from '../safety/classify.js';
 import { checkApproval } from '../safety/policy.js';
 import { validateCliScenarios, type CliExpectation, type CliScenario } from '../scenarios/cli-schema.js';
-import { mkFinding, mkResult, slugify, statusFrom, tail } from './common.js';
-import type { AdapterOutcome, DetectionResult, ExecutionContext, PlannedTest, ProjectContext, TestAdapter, TestPlan } from './types.js';
-import fsx from 'node:fs';
+import { mkFinding, mkResult, statusFrom, tail } from './common.js';
+import type { AdapterOutcome, DetectionResult, PlannedTest, ProjectContext, TestAdapter, TestPlan } from './types.js';
 
 export interface CliTarget { name: string; file: string; args: string[]; component: string; source: string }
 
@@ -181,7 +180,7 @@ export interface CliRun { out: RunOutcome; command: string; sandboxed: boolean }
 async function runSpec(ctx: ProjectContext, t: CliTarget, sc: Spec, timeoutMs: number): Promise<CliRun> {
   const scratch = newScratch(ctx.root);
   try {
-    for (const [name, content] of Object.entries(sc.files ?? {})) fsx.writeFileSync(path.join(scratch, name), content);
+    for (const [name, content] of Object.entries(sc.files ?? {})) fs.writeFileSync(path.join(scratch, name), content);
     const argv = sc.argv.map((a) => (sc.scratchArgs && a.startsWith('@') ? path.join(scratch, a.slice(1)) : a));
     // Signals sent to a bubblewrap'd process hit the sandbox wrapper, not the program (it would mask a program that ignores SIGINT),
     // so signal scenarios run without the sandbox. They use no hostile input. With sandbox "require" they are not run at all.
@@ -195,8 +194,6 @@ async function runSpec(ctx: ProjectContext, t: CliTarget, sc: Spec, timeoutMs: n
     return { out, command: display(t, sc.argv), sandboxed: out.sandboxed };
   } finally { cleanupScratch(scratch); }
 }
-
-const HARD_HANG_NOTE = 'Hang';
 
 export const cliAdapter: TestAdapter = {
   id: 'cli',
@@ -314,7 +311,6 @@ export const cliAdapter: TestAdapter = {
       }
     }
     if ((rejected as unknown[]).length) notes.push(`${(rejected as unknown[]).length} supplied CLI scenario(s) were rejected by validation and never executed.`);
-    void HARD_HANG_NOTE;
     return { results, findings, notes, artifacts: { 'rejected-cli-scenarios': (rejected as unknown[]).length } };
   },
 };

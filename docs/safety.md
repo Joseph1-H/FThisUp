@@ -1,5 +1,7 @@
 # Safety model
 
+> v0.2 generalizes this beyond the browser: the same rules now apply to the API adapter (same `SafetyGuard`), and a new execution layer (`src/exec`) governs every subprocess. See "Process execution" below.
+
 FThisUp is for applications you own or are explicitly authorized to test. The rules below are **enforced by code in the executor** (`src/safety/policy.ts`, `src/engines/playwright/executor.ts`, `session.ts`), not by prompts.
 
 ## Target policy
@@ -37,6 +39,20 @@ Every request the browser makes passes through the guard:
 - `.env` files, keys and credential files are never opened by the project scanner.
 - Everything written to disk passes through redaction (JWTs, bearer tokens, `password`/`token`/`secret` pairs, emails, card numbers, your test credentials) and long strings are truncated. **Screenshots are pixels and cannot be redacted**: do not run against pages that show real personal data.
 - No telemetry. The only network traffic is to your target.
+
+## Process execution (CLI, fuzzing, test runners, desktop)
+
+Enforced in `src/exec/run.ts`, not in prompts:
+
+- **No shells, ever.** `sh`, `bash`, `cmd`, `powershell`... are refused. Commands are argv arrays.
+- **Executable allow-list**: known tools (`node`, `python3`, `cargo`, `flutter`, `go`, `cmake`, ...) or a binary located **inside the project**. Anything else is refused before spawning.
+- **AI cannot choose what runs.** Agent-proposed CLI scenarios name a target (a discovered/configured CLI) plus argv strings; API scenarios supply a path only. Schemas are strict: unknown fields are rejected.
+- **Working directory and files stay inside the project.** Hostile-input runs use a scratch directory (`.fthisup-tmp/`, auto-ignored, removed afterwards).
+- **Sanitized environment**: variables that look like secrets (`*KEY*`, `*TOKEN*`, `*SECRET*`, `*PASSWORD*`, `AWS_*`, `ANTHROPIC_*`, `GITHUB_*`, `FTHISUP_TEST_*` ...) are never passed to child processes. `HOME` is redirected to the scratch directory for hostile-input runs.
+- **Limits**: per-run timeout (process group killed), output cap, `prlimit` CPU/file-size/open-file limits on Linux.
+- **OS sandbox (Linux, bubblewrap)** for CLI probing and function fuzzing: the whole filesystem is read-only, only the scratch directory is writable, no network, separate PID/IPC namespaces, dies with FThisUp. `safety.sandbox`: `auto` (default: use it if available), `require` (fail closed), `off`. **Without bubblewrap (macOS, Windows, minimal containers) there is no filesystem/network isolation**: FThisUp says so in the report, disables function fuzzing unless you set `safety.allowUnsandboxedFuzzing`, and requires approval for CLI targets whose name or flags look destructive.
+- Signal scenarios (SIGINT/SIGTERM) run **outside** the sandbox: a signal sent to a bubblewrapped process hits the wrapper, which would hide a program that ignores Ctrl-C. They use no hostile input.
+- Existing-test runners and the desktop adapter run **unsandboxed** (they must build and write artifacts, or need a display) but through the same allow-list/limits/environment rules. They never install dependencies.
 
 ## What FThisUp cannot guarantee
 - Test inputs *do* hit your app (that's the point). In local mode forms are really submitted, so test data (`fthisup-test@example.invalid`, "FThisUp test") may be created in your dev database. Use a throwaway database.

@@ -5,10 +5,10 @@ import { classifySensitivity } from '../safety/classify.js';
 import { checkApproval, evaluateTarget, SafetyGuard } from '../safety/policy.js';
 import { foreignPortChecker } from '../safety/scope.js';
 import { validateApiScenarios, type ApiExpectation, type ApiScenario } from '../scenarios/api-schema.js';
-import { mkFinding, mkResult, slugify, statusFrom, tail } from './common.js';
+import { mkFinding, mkResult, owningComponent, slugify, statusFrom, tail } from './common.js';
 import { loadSection } from './cli.js';
 import { discoverRoutesFromSource, exampleFromSchema, findSpecFile, loadSpecFile, parseOpenApi, validateValue, wrongTypeValue, type ApiEndpoint, type ApiParam, type ApiSpec, type Schema } from './openapi.js';
-import type { AdapterOutcome, DetectionResult, ExecutionContext, PlannedTest, ProjectContext, TestAdapter, TestPlan } from './types.js';
+import type { AdapterOutcome, DetectionResult, PlannedTest, ProjectContext, TestAdapter, TestPlan } from './types.js';
 
 // ------------------------------------------------------------------------------------------------ request model
 interface Req { method: string; path: string; query?: Record<string, string>; headers?: Record<string, string>; body?: string; contentType?: string | null; auth?: 'none' | 'invalid' | 'valid'; parallel?: number }
@@ -288,9 +288,10 @@ export const apiAdapter: TestAdapter = {
     const url = ctx.apiUrl;
     const file = findSpecFile(ctx.root, ctx.config.api?.spec);
     const routes = file ? [] : discoverRoutesFromSource(ctx.root);
-    const apiComps = ctx.manifest.components.filter((c) => c.roles.includes('api')).map((c) => c.id);
+    const owner = file ? owningComponent(ctx, file) : routes[0] ? owningComponent(ctx, routes[0].source) : undefined;
+    const apiComps = owner ? [owner] : ctx.manifest.components.filter((c) => c.roles.includes('api')).map((c) => c.id);
     let live = false;
-    if (!file && !routes.length && url && apiComps.length) live = !!(await loadSpec(ctx, url)).spec;
+    if (!file && !routes.length && url && apiComps.length && evaluateTarget(url, ctx.config).allowed) live = !!(await loadSpec(ctx, url)).spec;
     const applicable = !!file || routes.length > 0 || live || !!ctx.config.api?.spec;
     return { applicable, confidence: file || live ? 'high' : 'medium', components: apiComps.length ? apiComps : ctx.manifest.components.slice(0, 1).map((c) => c.id), reason: file ? `OpenAPI spec ${path.relative(ctx.root, file)}` : live ? 'OpenAPI spec served by the running API' : routes.length ? `${routes.length} route definition(s) found in source` : 'no API definitions found' };
   },
@@ -298,6 +299,12 @@ export const apiAdapter: TestAdapter = {
   async capabilities(ctx): Promise<Capability[]> {
     const url = ctx.apiUrl;
     const caps: Capability[] = [];
+    // policy first: an unauthorized host is never contacted, not even to check that it is reachable
+    const policy = url ? evaluateTarget(url, ctx.config) : null;
+    if (policy && !policy.allowed) {
+      caps.push({ id: 'target-policy', label: 'Authorized API target', available: false, reason: `target blocked by the safety policy: ${policy.reason} (nothing was contacted)`, setup: policy.hint });
+      return caps;
+    }
     const reach = url ? await probeUrl(url, 3000) : { ok: false, detail: 'no URL' };
     caps.push({ id: 'running-api', label: 'Running API', available: !!url && reach.ok, reason: url ? (reach.ok ? url : `${url} is not reachable (${reach.detail})`) : 'no URL given and nothing found on common local ports', setup: 'start your API, then pass --url / --api-url or set "api.url" in fthisup.config.json' });
     const { endpoints, source } = await loadSpec(ctx, reach.ok ? url : null);
@@ -403,4 +410,3 @@ function agentProbe(a: ApiScenario): Probe {
     expect: a.expect.map((e) => (e.type === 'rejects' ? ({ type: 'rejects4xx', hard: false } as Exp) : e)), risk: a.risk, mutating, sensitivity: a.sensitivity ?? (a.method === 'DELETE' ? 'deletion' : undefined), origin: 'agent', priority: -1,
   };
 }
-void MAX_BODY;

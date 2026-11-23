@@ -49,15 +49,16 @@ let total = 0;
 for (const [name, f] of selected.slice(0, cfg.maxFunctions)) {
   if (only && !only.has(name)) continue;
   if (DESTRUCTIVE.test(name)) { out({ t: 'skip-fn', fn: name, reason: 'name suggests side effects (not fuzzed)' }); continue; }
-  let i = 0;
+  let i = 0, hangs = 0;
   const all = [...callsFor(f.length)];
   const stride = Math.max(1, Math.ceil(all.length / cfg.maxCalls));
   for (let c = 0; c < all.length; c += stride) {
     const call = all[c]; i++;
     const key = name + '#' + c;
     if (skip.has(key)) continue;
+    if (hangs >= 2) break; // two hangs already prove the point; more would only burn time
     out({ t: 'start', fn: name, key, desc: call.desc, edge: call.edge, size: call.size });
-    let outcome = 'returned', errName, errMsg;
+    let outcome = 'returned', errName, errMsg, recursion = false;
     try {
       const ctx = vm.createContext({ f, args: call.args });
       let r = vm.runInContext('f.apply(undefined, args)', ctx, { timeout: cfg.timeoutMs });
@@ -67,10 +68,19 @@ for (const [name, f] of selected.slice(0, cfg.maxFunctions)) {
     } catch (e) {
       const code = e && e.code;
       if (code === 'ERR_SCRIPT_EXECUTION_TIMEOUT' || code === 'FT_UNSETTLED') outcome = 'hang';
-      else { outcome = 'threw'; errName = e && e.name ? String(e.name) : typeof e; errMsg = String(e && e.message !== undefined ? e.message : e).slice(0, 240); }
+      else {
+        outcome = 'threw'; errName = e && e.name ? String(e.name) : typeof e; errMsg = String(e && e.message !== undefined ? e.message : e).slice(0, 240);
+        if (errName === 'RangeError' && /call stack/i.test(errMsg)) {
+          // is it the PROJECT'S code recursing (same user frame repeated), or the engine's own toString/JSON recursion?
+          const user = String(e.stack || '').split('\n').filter((l) => /^\s+at /.test(l) && !/node:|<anonymous>|\(native\)/.test(l));
+          const counts = {}; for (const l of user) counts[l] = (counts[l] || 0) + 1;
+          recursion = Math.max(0, ...Object.values(counts)) >= 3;
+        }
+      }
     }
+    if (outcome === 'hang') hangs++;
     total++;
-    out({ t: 'end', fn: name, key, outcome, name: errName, message: errMsg });
+    out({ t: 'end', fn: name, key, outcome, name: errName, message: errMsg, recursion });
   }
 }
 out({ t: 'done', calls: total });

@@ -86,13 +86,16 @@ for path in cfg["modules"]:
         nfn += 1
         allc = list(calls_for(arity_of(f)))
         stride = max(1, -(-len(allc) // cfg["maxCalls"]))
+        hangs = 0
         for c in range(0, len(allc), stride):
             args, desc, edge, size = allc[c]
             key = "%s#%d" % (full, c)
             if key in skip:
                 continue
+            if hangs >= 2:
+                break  # two hangs already prove the point; more would only burn time
             out({"t": "start", "fn": full, "key": key, "desc": desc, "edge": edge, "size": size})
-            outcome, ename, emsg = "returned", None, None
+            outcome, ename, emsg, recursion = "returned", None, None, False
             try:
                 if has_alarm:
                     signal.setitimer(signal.ITIMER_REAL, cfg["timeoutMs"] / 1000.0)
@@ -101,11 +104,22 @@ for path in cfg["modules"]:
                 outcome = "hang"
             except RecursionError as e:
                 outcome, ename, emsg = "threw", "RecursionError", str(e)[:200]
+                try:
+                    # is the PROJECT'S code recursing (same frame repeated many times), or a builtin (repr/str/json) hitting the limit?
+                    counts = {}
+                    for fr in traceback.extract_tb(e.__traceback__):
+                        if fr.filename.startswith(os.path.dirname(path)):
+                            k = (fr.filename, fr.lineno); counts[k] = counts.get(k, 0) + 1
+                    recursion = bool(counts) and max(counts.values()) >= 20
+                except BaseException:
+                    recursion = False
             except BaseException as e:
                 outcome, ename, emsg = "threw", type(e).__name__, str(e)[:240]
             finally:
                 if has_alarm:
                     signal.setitimer(signal.ITIMER_REAL, 0)
+            if outcome == "hang":
+                hangs += 1
             total += 1
-            out({"t": "end", "fn": full, "key": key, "outcome": outcome, "name": ename, "message": emsg})
+            out({"t": "end", "fn": full, "key": key, "outcome": outcome, "name": ename, "message": emsg, "recursion": recursion})
 out({"t": "done", "calls": total})

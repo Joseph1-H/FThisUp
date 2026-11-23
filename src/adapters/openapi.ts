@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { parse as parseYaml } from 'yaml';
-import { readJsonSafe, walkSources } from '../utils/files.js';
+import { walkSources } from '../utils/files.js';
 
 export interface ApiParam { name: string; in: 'path' | 'query' | 'header'; required: boolean; schema?: Schema }
 export type Schema = { type?: string | string[]; format?: string; enum?: unknown[]; properties?: Record<string, Schema>; required?: string[]; items?: Schema; nullable?: boolean; example?: unknown; default?: unknown; minimum?: number; maximum?: number; $ref?: string; allOf?: Schema[]; oneOf?: Schema[]; anyOf?: Schema[]; additionalProperties?: boolean | Schema };
@@ -88,9 +88,6 @@ export function parseOpenApi(doc: any, file: string): ApiSpec {
 export function findSpecFile(root: string, explicit?: string): string | null {
   if (explicit) { const p = path.resolve(root, explicit); return fs.existsSync(p) ? p : null; }
   const names = /^(openapi|swagger)\.(json|ya?ml)$/i;
-  const stack = [root];
-  let depth = 0;
-  void depth;
   const visit = (dir: string, d: number): string | null => {
     if (d > 3) return null;
     let ents: fs.Dirent[] = [];
@@ -99,7 +96,6 @@ export function findSpecFile(root: string, explicit?: string): string | null {
     for (const e of ents) if (e.isDirectory() && !['node_modules', '.git', 'dist', 'build', 'target', 'venv', '.venv', '.fthisup-tmp', 'fthisup-results'].includes(e.name) && !e.name.startsWith('.')) { const r = visit(path.join(dir, e.name), d + 1); if (r) return r; }
     return null;
   };
-  void stack;
   return visit(root, 0);
 }
 
@@ -189,4 +185,3 @@ export function validateValue(doc: { components: Record<string, Schema> }, value
   if (actual === 'array' && r.items) (value as unknown[]).slice(0, 5).forEach((v, i) => errs.push(...validateValue(doc, v, r.items, `${at}[${i}]`, depth + 1)));
   return errs.slice(0, 5);
 }
-void readJsonSafe;

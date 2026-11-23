@@ -32,9 +32,9 @@ mkdir -p .claude/skills && cp -r node_modules/fthisup/skills/fthisup .claude/ski
 Restart the agent session if the skill does not show up.
 
 ## What the skill does
-1. Identifies the project, 2. confirms a safe target, 3. runs `fthisup doctor`, 4. runs `fthisup scan`, 5. optionally writes extra typed scenarios (validated with `--dry-run`), 6. runs `fthisup test`, 7. reads `results.json` and summarizes **confirmed** failures separately from suspected ones, 8. suggests fixes without editing code.
+1. Identifies the project and its components, 2. confirms a safe target, 3. runs `fthisup doctor` (which adapters can run now, what is missing), 4. runs `fthisup scan`, 5. optionally writes extra typed scenarios (`scenarios`, `cliScenarios`, `apiScenarios`, validated with `--dry-run`), 6. runs `fthisup test`, 7. reads `results.json` and summarizes **confirmed** failures separately from suspected ones (per component, distinguishing failed assertions in your own tests from defects FThisUp observed), 8. suggests fixes without editing code. It never installs SDKs or dependencies; it tells you what is missing.
 
 `/fthisup fix` is a separate workflow: it reads confirmed bugs, proposes changes, edits **only with your permission**, runs your existing tests, re-runs FThisUp, and reports per bug whether the scenario now passes.
 
 ## Agent-proposed scenarios
-Agents may add scenarios with `--scenarios file.json`. They are validated against a strict schema (no scripts, no shell, same-origin only) and executed under the identical safety policy. Format: [skills/fthisup/references/scenario-format.md](../skills/fthisup/references/scenario-format.md).
+Agents may add scenarios with `--scenarios file.json` (sections `scenarios` for web, `cliScenarios`, `apiScenarios`). They are validated against strict schemas (no scripts, no shell, no executables, no hosts) and executed under the identical runtime safety layers. Format: [skills/fthisup/references/scenario-format.md](../skills/fthisup/references/scenario-format.md).

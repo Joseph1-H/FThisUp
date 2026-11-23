@@ -10,7 +10,7 @@ export function headlineFor(r: RunResults): { headline: string; sub: string; ton
   if (executed === 0) return { headline: 'FTHISUP — NOTHING RAN.', tone: 'idle', sub: 'No scenario could be executed. See the skipped/blocked list below for why.' };
   return {
     headline: 'FTHISUP — NOTHING BROKE. YET.', tone: 'ok',
-    sub: r.summary.suspected ? `No confirmed failures, but ${r.summary.suspected} suspected issue${r.summary.suspected === 1 ? '' : 's'} deserve a look. Passing checks do not prove the app is bug-free.` : 'No confirmed failures in the checks that ran. Passing checks do not prove the app is bug-free.',
+    sub: r.summary.suspected ? `No confirmed failures, but ${r.summary.suspected} suspected issue${r.summary.suspected === 1 ? '' : 's'} deserve a look. Passing checks do not prove the project is bug-free.` : 'No confirmed failures in the checks that ran. Passing checks do not prove the project is bug-free.',
   };
 }
 
@@ -45,7 +45,7 @@ export function renderReport(results: RunResults, resultsDir: string): string {
 <body>
 <main>
 <header class="hero ${tone}">
-  <div class="brand">FTHISUP <span>· Your AI built it. Now let another AI try to destroy it.</span></div>
+  <div class="brand">FTHISUP <span>· Your code works? Prove it.</span></div>
   <h1 id="headline">${esc(headline)}</h1>
   <p class="sub" id="sub">${esc(sub)}</p>
   <dl class="meta" id="meta"></dl>
@@ -55,6 +55,8 @@ export function renderReport(results: RunResults, resultsDir: string): string {
   <div class="card"><h2>Severity distribution</h2><div id="sev"></div></div>
   <div class="card"><h2>Test categories</h2><div id="cats"></div></div>
 </section>
+<section class="card" id="detected"><h2>Detected project</h2><div id="components"></div></section>
+<section class="card" id="adapterbox"><h2>Adapters</h2><div class="tablewrap"><table id="adapters"><thead><tr><th>Adapter</th><th>Status</th><th>Components</th><th>Tests</th><th>Why / what is missing</th></tr></thead><tbody></tbody></table></div></section>
 <section>
   <h2 class="section">Issues</h2>
   <div class="toolbar">
@@ -62,6 +64,8 @@ export function renderReport(results: RunResults, resultsDir: string): string {
     <select id="fstatus" aria-label="Filter by status"><option value="">All statuses</option><option>confirmed</option><option>suspected</option><option>not-reproducible</option></select>
     <select id="fsev" aria-label="Filter by severity"><option value="">All severities</option><option>critical</option><option>high</option><option>medium</option><option>low</option><option>info</option></select>
     <select id="fcat" aria-label="Filter by category"><option value="">All categories</option></select>
+    <select id="fcomp" aria-label="Filter by component"><option value="">All components</option></select>
+    <select id="fadapter" aria-label="Filter by adapter"><option value="">All adapters</option></select>
     <button id="expand" type="button">Expand all</button>
   </div>
   <p class="count" id="count" role="status"></p>
@@ -70,7 +74,7 @@ export function renderReport(results: RunResults, resultsDir: string): string {
 <section>
   <h2 class="section">All scenarios</h2>
   <div class="toolbar"><input id="q2" type="search" placeholder="Filter scenarios…" aria-label="Filter scenarios"><select id="fout" aria-label="Filter by outcome"><option value="">All outcomes</option><option>passed</option><option>failed</option><option>skipped</option><option>blocked</option></select></div>
-  <div class="tablewrap"><table id="tbl"><thead><tr><th>Outcome</th><th>Scenario</th><th>Category</th><th>Target</th><th>Detail</th></tr></thead><tbody></tbody></table></div>
+  <div class="tablewrap"><table id="tbl"><thead><tr><th>Outcome</th><th>Scenario</th><th>Adapter</th><th>Category</th><th>Target</th><th>Detail</th></tr></thead><tbody></tbody></table></div>
 </section>
 <section class="card" id="notes"></section>
 <footer>Generated locally by FThisUp ${esc(results.environment.fthisupVersion)}. No data left your machine. A clean report is not a guarantee of correctness or security.</footer>
@@ -148,6 +152,11 @@ footer{margin-top:28px;color:var(--muted);font-size:12px}
 #lightbox{position:fixed;inset:0;background:rgba(0,0,0,.88);display:flex;align-items:center;justify-content:center;padding:16px;z-index:10;cursor:zoom-out}
 #lightbox img{max-width:100%;max-height:100%}
 .empty{padding:24px;text-align:center;color:var(--muted);border:1px dashed var(--line);border-radius:8px}
+.card#detected,.card#adapterbox{margin:12px 0}
+.comp{display:flex;flex-wrap:wrap;gap:6px 14px;padding:7px 0;border-bottom:1px solid var(--line);font-size:13px}.comp:last-child{border-bottom:0}.comp b{font-family:var(--mono);font-weight:500}.comp span{color:var(--muted)}
+.chip{font:11px var(--mono);padding:1px 7px;border-radius:10px;border:1px solid var(--line);color:var(--muted)}
+.st-ran{color:var(--green)}.st-skipped,.st-unavailable,.st-unsupported,.st-blocked,.st-error{color:var(--amber)}.st-not-applicable{color:var(--muted)}
+.ek-failed-assertion{border-color:#2d3b52;color:#8fb2de}.ek-observed-defect{border-color:#5a2226;color:#ff9a9a}.ek-static-heuristic{color:var(--muted)}
 @media (max-width:520px){.bar{grid-template-columns:80px 1fr 44px}}
 `;
 
@@ -170,6 +179,12 @@ cats.forEach(function(k){var c=S.byCategory[k];if(!c.total)return;var t=h('div',
  h('i',{style:'width:'+(c.total?c.passed/c.total*100:0)+'%;background:#3fb27f'}),h('i',{style:'width:'+(c.total?c.failed/c.total*100:0)+'%;background:#ff3b3b'}));
  $('cats').appendChild(h('div',{class:'bar'},h('span',null,k),t,h('em',null,c.passed+'/'+c.total)))});
 if(R.findings.some(function(f){return f.category==='code-analysis'}))$('cats').appendChild(h('p',{class:'count'},'Static-analysis warnings are listed under Issues but are not executed tests.'));
+(R.components||[]).forEach(function(c){$('components').appendChild(h('div',{class:'comp'},h('b',null,c.id),h('span',null,c.kind),h('span',null,(c.languages||[]).join('/')),h('span',null,(c.frameworks||[]).join(', ')),h('span',{class:'chip'},'confidence: '+c.confidence)))});
+if(!(R.components||[]).length){$('components').appendChild(h('p',{class:'count'},'No components recorded (results written by an older FThisUp).'))}
+if(!(R.adapters||[]).length)$('adapterbox').hidden=true;
+(R.adapters||[]).filter(function(a){return a.status!=='not-applicable'}).forEach(function(a){var why=(a.reason||'');var miss=(a.missing||[]).map(function(m){return m.what+(m.setup?'  →  '+m.setup:'')});var tr=h('tr',null,h('td',null,a.id),h('td',{class:'st-'+a.status},a.status),h('td',null,(a.components||[]).join(', ')),h('td',null,a.executed?(a.passed+' passed / '+a.failed+' failed'+(a.skipped?' / '+a.skipped+' skipped':'')+(a.blocked?' / '+a.blocked+' blocked':'')):'—'),h('td',null,[why].concat(miss).filter(Boolean).map(function(t){return h('div',null,t)})));$('adapters').tBodies[0].appendChild(tr);var caps=(a.capabilities||[]).filter(function(c){return !c.available});});
+var adapterIds=[];R.findings.forEach(function(f){if(f.adapter&&adapterIds.indexOf(f.adapter)<0)adapterIds.push(f.adapter)});adapterIds.forEach(function(a){$('fadapter').appendChild(h('option',null,a))});
+var compIds=[];R.findings.forEach(function(f){if(f.component&&compIds.indexOf(f.component)<0)compIds.push(f.component)});compIds.forEach(function(a){$('fcomp').appendChild(h('option',null,a))});
 cats.concat(['code-analysis']).filter(function(v,i,a){return a.indexOf(v)===i}).forEach(function(c){$('fcat').appendChild(h('option',null,c))});
 
 function list(label,items,fmt){if(!items||!items.length)return null;return h('div',null,h('h3',null,label+' ('+items.length+')'),items.slice(0,10).map?items.slice(0,10).map(function(i){return h('pre',null,fmt(i))}):null)}
@@ -179,30 +194,31 @@ function render(f){
  b.appendChild(h('h3',null,'Reproduction steps'));
  b.appendChild(h('ol',null,f.reproductionSteps.map(function(s){return h('li',null,s)})));
  var rp=f.reproduction;
+ if(f.evidenceKind){b.appendChild(h('p',{class:'count'},h('span',{class:'chip ek-'+f.evidenceKind},f.evidenceKind==='failed-assertion'?'failed assertion in the project’s own tests (a bug OR an outdated test)':f.evidenceKind==='observed-defect'?'defect observed by FThisUp':'static heuristic (unconfirmed)'),f.scope?'  '+f.scope:''))}
  b.appendChild(h('p',{class:'count'},f.source==='execution'?(rp.attempted?'Reproduced on '+(rp.reproduced?'re-run':'0 of 1 re-runs')+' ('+rp.attempts+' attempts total). ':'Not re-run. ')+'Confidence: '+f.confidence+'. Route: '+f.route:'Static heuristic · confidence '+f.confidence+(f.file?' · '+f.file+(f.line?':'+f.line:''):'')));
  var sh=f.evidence.screenshot&&SH[f.evidence.screenshot];
  if(sh){var img=h('img',{class:'shot',src:sh,alt:'Screenshot at failure: '+f.title,loading:'lazy'});img.addEventListener('click',function(){var lb=$('lightbox');lb.querySelector('img').src=sh;lb.hidden=false});b.appendChild(h('h3',null,'Screenshot'));b.appendChild(img);}
  var ev=f.evidence;
- [['Uncaught page errors',ev.pageErrors,function(x){return x}],['Browser console errors',ev.consoleErrors,function(x){return x.text}],['Network failures',ev.networkFailures,function(x){return x.method+' '+x.url+' → '+(x.status||x.failure)}],['Mutating requests observed',ev.mutatingRequests,function(x){return x.method+' '+x.url+(x.failure?' ('+x.failure+')':'')}],['Requests blocked by safety policy',ev.blockedRequests,function(x){return x.method+' '+x.url+' — '+x.failure}],['Notes',ev.notes,function(x){return x}]].forEach(function(l){var n=list(l[0],l[1],l[2]);if(n)b.appendChild(n)});
+ [['Uncaught page errors',ev.pageErrors,function(x){return x}],['Browser console errors',ev.consoleErrors,function(x){return x.text}],['Network failures',ev.networkFailures,function(x){return x.method+' '+x.url+' → '+(x.status||x.failure)}],['Mutating requests observed',ev.mutatingRequests,function(x){return x.method+' '+x.url+(x.failure?' ('+x.failure+')':'')}],['Requests blocked by safety policy',ev.blockedRequests,function(x){return x.method+' '+x.url+' — '+x.failure}],['Command output',ev.logs,function(x){return x}],['Commands executed',ev.commands,function(x){return x}],['Notes',ev.notes,function(x){return x}]].forEach(function(l){var n=list(l[0],l[1],l[2]);if(n)b.appendChild(n)});
  b.appendChild(h('h3',null,'Suggested fix'));b.appendChild(h('p',{class:'fix'},f.suggestedFix));
- var d=h('details',{class:'issue','data-s':[f.title,f.route,f.actual,f.expected,f.category,f.file||''].concat(ev.pageErrors).join(' ').toLowerCase()},
-  h('summary',null,h('span',{class:'badge sev-'+f.severity},f.severity),h('span',{class:'badge st-'+f.status},f.status),h('span',{class:'title'},f.title),h('span',{class:'badge'},f.category)),b);
+ var d=h('details',{class:'issue','data-s':[f.title,f.route,f.actual,f.expected,f.category,f.file||'',f.component||'',f.adapter||'',f.failureType||'',f.scope||''].concat(ev.pageErrors).join(' ').toLowerCase()},
+  h('summary',null,h('span',{class:'badge sev-'+f.severity},f.severity),h('span',{class:'badge st-'+f.status},f.status),h('span',{class:'title'},f.title),f.component?h('span',{class:'chip'},f.component):null,f.failureType?h('span',{class:'chip'},f.failureType):null,h('span',{class:'badge'},f.category)),b);
  d._f=f;return d}
 var nodes=R.findings.slice().sort(function(a,b){var o={confirmed:0,suspected:1,'not-reproducible':2},s={critical:0,high:1,medium:2,low:3,info:4};return (o[a.status]-o[b.status])||(s[a.severity]-s[b.severity])}).map(render);
 nodes.forEach(function(n){$('issues').appendChild(n)});
 var none=h('div',{class:'empty',hidden:''},R.findings.length?'No issues match the current filters.':(S.total?'No issues found by the checks that ran.':'Nothing was executed.'));$('issues').appendChild(none);
 function applyFilters(){var q=$('q').value.toLowerCase(),st=$('fstatus').value,sv=$('fsev').value,ct=$('fcat').value,n=0;
- nodes.forEach(function(d){var f=d._f;var ok=(!q||d.getAttribute('data-s').indexOf(q)>-1)&&(!st||f.status===st)&&(!sv||f.severity===sv)&&(!ct||f.category===ct);d.hidden=!ok;if(ok)n++});
+ nodes.forEach(function(d){var f=d._f;var ok=(!q||d.getAttribute('data-s').indexOf(q)>-1)&&(!st||f.status===st)&&(!sv||f.severity===sv)&&(!ct||f.category===ct)&&(!$('fcomp').value||f.component===$('fcomp').value)&&(!$('fadapter').value||f.adapter===$('fadapter').value);d.hidden=!ok;if(ok)n++});
  none.hidden=n>0;$('count').textContent=n+' of '+nodes.length+' issues shown'}
-['q','fstatus','fsev','fcat'].forEach(function(id){$(id).addEventListener('input',applyFilters)});
+['q','fstatus','fsev','fcat','fcomp','fadapter'].forEach(function(id){$(id).addEventListener('input',applyFilters)});
 var open=false;$('expand').addEventListener('click',function(){open=!open;nodes.forEach(function(d){if(!d.hidden)d.open=open});$('expand').textContent=open?'Collapse all':'Expand all'});
 applyFilters();
 var rows=R.results.map(function(r){var det=r.reason||(r.expectations.filter(function(e){return !e.passed}).map(function(e){return e.message}).join(' ')||'');
- var tr=h('tr',{'data-o':r.outcome,'data-s':(r.name+' '+r.category+' '+r.target+' '+det).toLowerCase()},h('td',{class:'o-'+r.outcome},r.outcome),h('td',null,r.name),h('td',null,r.category),h('td',null,r.target),h('td',null,det));$('tbl').tBodies[0].appendChild(tr);return tr});
+ var tr=h('tr',{'data-o':r.outcome,'data-s':(r.name+' '+r.category+' '+(r.adapter||'')+' '+r.target+' '+det).toLowerCase()},h('td',{class:'o-'+r.outcome},r.outcome),h('td',null,r.name),h('td',null,r.adapter||''),h('td',null,r.category),h('td',null,r.target),h('td',null,det));$('tbl').tBodies[0].appendChild(tr);return tr});
 function f2(){var q=$('q2').value.toLowerCase(),o=$('fout').value;rows.forEach(function(tr){tr.hidden=!((!q||tr.getAttribute('data-s').indexOf(q)>-1)&&(!o||tr.getAttribute('data-o')===o))})}
 $('q2').addEventListener('input',f2);$('fout').addEventListener('input',f2);
 var notes=$('notes');notes.appendChild(h('h2',null,'Coverage & honesty notes'));
-var C=R.coverage;var ul=h('ul');[ 'Routes discovered: '+C.routesDiscovered+' · navigation checks run: '+C.routesTested,'Forms discovered: '+C.formsDiscovered+' · forms exercised: '+C.formsTested].concat(C.notes).concat(R.safety.notes).forEach(function(n){ul.appendChild(h('li',null,n))});notes.appendChild(ul);
+var C=R.coverage;var ul=h('ul');if(R.sandbox)ul.appendChild(h('li',null,'Isolation: '+R.sandbox.kind+' — '+R.sandbox.note));[ 'Routes discovered: '+C.routesDiscovered+' · navigation checks run: '+C.routesTested,'Forms discovered: '+C.formsDiscovered+' · forms exercised: '+C.formsTested].concat(C.notes).concat(R.safety.notes).forEach(function(n){ul.appendChild(h('li',null,n))});notes.appendChild(ul);
 $('lightbox').addEventListener('click',function(){this.hidden=true});
 document.addEventListener('keydown',function(e){if(e.key==='Escape')$('lightbox').hidden=true});
 })();

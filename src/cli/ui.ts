@@ -14,8 +14,7 @@ export const BANNER = String.raw`
 
 export function printBanner(target?: string) {
   console.log(c.red(BANNER));
-  console.log(`   ${c.bold('Your AI built it.')}`);
-  console.log(`   ${c.bold('Now let another AI try to destroy it.')}\n`);
+  console.log(`   ${c.bold('Your code works? Prove it.')}\n`);
   if (target) console.log(`   Target: ${c.cyan(target)}\n`);
 }
 
