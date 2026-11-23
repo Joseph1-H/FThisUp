@@ -52,6 +52,18 @@ describe('fthisup update', () => {
     }
   });
 
+  it('does not try to compile when the new version ships dist/ prebuilt', () => {
+    const { base, origin, release } = makeOrigin();
+    const clone = path.join(base, 'c'); g(base, 'clone', '-q', origin, clone);
+    fs.mkdirSync(path.join(clone, 'node_modules')); // looks like a dev checkout: would normally trigger npm install/compile
+    const work = path.join(base, 'work');
+    fs.mkdirSync(path.join(work, 'dist', 'cli'), { recursive: true }); fs.writeFileSync(path.join(work, 'dist', 'cli', 'index.js'), '//');
+    g(work, 'add', '.'); release('1.4.0');
+    const r = updateCheckout(clone);
+    expect(r.state).toBe('updated');
+    expect(r.message).not.toMatch(/rebuilt|compile/);
+  });
+
   it('leaves a copy with uncommitted changes or unpushed commits alone', () => {
     const { base, origin, release } = makeOrigin();
     const dirty = path.join(base, 'dirty'); g(base, 'clone', '-q', origin, dirty);
