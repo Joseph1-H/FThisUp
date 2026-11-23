@@ -1,7 +1,7 @@
 ---
 name: fthisup
-description: Prove the code works by actually trying to break it. Detects what the project contains (web app, HTTP API, CLI, Python/JS/Rust/Go/Flutter/Java/C++/Swift code, desktop app, Godot game; monorepos too), picks the right testing adapters, runs the project's own tests plus adversarial checks (hostile input, invalid requests, crashes, hangs, double submits, API failures, auth gaps), re-runs every failure to confirm it, and reports only what really failed with evidence and repro steps. Use when the user types /fthisup, or asks to "try to break", "stress test", "fuzz", "find bugs in", "test everything in", or "prove" their code works. "/fthisup fix" repairs confirmed bugs.
-argument-hint: "[fix] [url]"
+description: Prove the code works by actually trying to break it. Detects what the project contains (web app, HTTP API, CLI, Python/JS/Rust/Go/Flutter/Java/C++/Swift code, desktop app, Godot game; monorepos too), picks the right testing adapters, runs the project's own tests plus adversarial checks (hostile input, invalid requests, crashes, hangs, double submits, API failures, auth gaps), re-runs every failure to confirm it, and reports only what really failed with evidence and repro steps. Use when the user types /fthisup, or asks to "try to break", "stress test", "fuzz", "find bugs in", "test everything in", or "prove" their code works. "/fthisup fix" repairs confirmed bugs. "/fthisup update" updates FThisUp itself to the latest version.
+argument-hint: "[fix | update] [url]"
 license: MIT
 compatibility: Requires Node.js 20+. Each adapter needs its own toolchain (Playwright Chromium for web, python3, cargo, flutter, ...). FThisUp never installs SDKs or dependencies; it reports what is missing. Works offline, no API keys.
 metadata:
@@ -13,6 +13,8 @@ metadata:
 You orchestrate the **FThisUp CLI**. The CLI detects the project, picks adapters, executes real tests, reproduces failures and writes the evidence. **Never invent bugs, results, screenshots, logs or coverage.** If it is not in `fthisup-results/results.json`, it did not happen.
 
 If the first argument is `fix`, stop here and follow [references/fix.md](references/fix.md) instead.
+
+If the first argument is `update`, do only this and stop: run `fthisup update` (it works from any directory, touches only FThisUp's own install and skill folders, and never your project). Relay its output faithfully: it states either the version change or that there is no new version. Use `fthisup update --check` to only look. If it updated anything, tell the user to restart the agent session so the new skill loads. Do not run any tests.
 
 FThisUp is **not published to npm**, so plain `npx fthisup` does not work. Wherever this skill says `fthisup <cmd>`, run `fthisup <cmd>` if it is on PATH (`fthisup --version`), otherwise `npx --yes github:Joseph1-H/FThisUp <cmd>`. Run from the project root.
 
