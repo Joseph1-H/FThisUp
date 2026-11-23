@@ -6,6 +6,7 @@ import { cleanupScratch, newScratch, runProcess, type RunOutcome } from '../exec
 import { which } from '../exec/tools.js';
 import { mkFinding, mkResult, slugify, statusFrom, tail } from './common.js';
 import * as P from './parsers.js';
+import { fuzzExtra } from './fuzz.js';
 import type { AdapterOutcome, DetectionResult, ExecutionContext, PlannedTest, ProjectContext, TestAdapter, TestOptions, TestPlan } from './types.js';
 
 export interface RunnerAdapterSpec {
@@ -306,8 +307,8 @@ export function makeRunnerAdapter(spec: RunnerAdapterSpec): TestAdapter {
 
 export const hasTool = (t: string) => !!which(t);
 
-export const pythonAdapter = makeRunnerAdapter({ id: 'python', name: 'Python (pytest / unittest)', description: 'Runs the project\'s existing pytest/unittest suites with structured results and reproduction.', ecosystems: ['python'], requirements: ['Python 3', 'pytest (only if the project uses it)'] });
-export const javascriptAdapter = makeRunnerAdapter({ id: 'javascript', name: 'JavaScript / TypeScript (node:test, Vitest, Jest, Mocha)', description: 'Runs the project\'s existing JS/TS test runner and type-check.', ecosystems: ['node'], requirements: ['Node.js 20+', 'installed project dependencies (node_modules)'] });
+export const pythonAdapter = makeRunnerAdapter({ id: 'python', name: 'Python (pytest / unittest)', description: 'Runs the project\'s existing pytest/unittest suites with structured results and reproduction.', ecosystems: ['python'], requirements: ['Python 3', 'pytest (only if the project uses it)', 'bubblewrap for adversarial fuzzing (optional)'], extra: fuzzExtra('python') });
+export const javascriptAdapter = makeRunnerAdapter({ id: 'javascript', name: 'JavaScript / TypeScript (node:test, Vitest, Jest, Mocha)', description: 'Runs the project\'s existing JS/TS test runner and type-check.', ecosystems: ['node'], requirements: ['Node.js 20+', 'installed project dependencies (node_modules)', 'bubblewrap for adversarial fuzzing (optional)'], extra: fuzzExtra('node') });
 export const rustAdapter = makeRunnerAdapter({ id: 'rust', name: 'Rust (cargo test)', description: 'Runs cargo test (and clippy when installed).', ecosystems: ['rust'], requirements: ['Rust toolchain (cargo)'] });
 export const goAdapter = makeRunnerAdapter({ id: 'go', name: 'Go (go test)', description: 'Runs go test -json and go vet. Parser verified against documented output only.', ecosystems: ['go'], requirements: ['Go toolchain'] });
 export const flutterAdapter = makeRunnerAdapter({ id: 'flutter', name: 'Flutter / Dart (flutter test, dart test, analyzer)', description: 'Runs existing flutter/dart tests and the analyzer. Device/emulator integration tests are NOT run.', ecosystems: ['flutter'], requirements: ['Flutter SDK (flutter apps) or Dart SDK (dart packages)', 'no emulator is started or required'] });
