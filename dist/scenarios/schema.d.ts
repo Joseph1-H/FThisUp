@@ -701,7 +701,7 @@ export declare const scenarioSchema: z.ZodObject<{
         action: "loginWithBadPassword";
     })[];
     requiresApproval: boolean;
-    origin: "heuristic" | "agent";
+    origin: "agent" | "heuristic";
     sensitivity?: "deletion" | "purchase" | "account-creation" | "messaging" | "upload" | "irreversible" | undefined;
     description?: string | undefined;
     component?: string | undefined;
@@ -813,7 +813,7 @@ export declare const scenarioSchema: z.ZodObject<{
     sensitivity?: "deletion" | "purchase" | "account-creation" | "messaging" | "upload" | "irreversible" | undefined;
     description?: string | undefined;
     component?: string | undefined;
-    origin?: "heuristic" | "agent" | undefined;
+    origin?: "agent" | "heuristic" | undefined;
 }>;
 export type Scenario = z.infer<typeof scenarioSchema>;
 export declare const scenarioFileSchema: z.ZodObject<{

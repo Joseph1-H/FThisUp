@@ -1,0 +1,12 @@
+name: workout_log
+description: FThisUp fixture, a tiny workout logger (buggy)
+publish_to: none
+version: 1.0.0
+environment:
+  sdk: ^3.0.0
+dependencies:
+  flutter:
+    sdk: flutter
+dev_dependencies:
+  flutter_test:
+    sdk: flutter

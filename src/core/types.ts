@@ -14,6 +14,7 @@ export const CATEGORIES = [
   'startup',
   'static-analysis',
   'project-validation',
+  'autonomous-discovery',
 ] as const;
 export type Category = (typeof CATEGORIES)[number];
 
@@ -118,6 +119,8 @@ export interface Finding {
   evidenceKind?: EvidenceKind;
   /** human-readable scope, e.g. "api GET /users", "cli: mytool --help", "test tests/test_x.py::test_y" */
   scope?: string;
+  /** set when this finding was found by a NEWLY GENERATED test (not by the project's own tests) */
+  discovery?: { scenarioId: string; method: 'agent' | 'engine-heuristic'; basis: string; feature: string; testFile?: string };
 }
 
 export interface TestResult {
@@ -134,6 +137,14 @@ export interface TestResult {
   origin: 'heuristic' | 'agent';
   adapter?: string;
   component?: string;
+  /**
+   * Where the check came from, for the report:
+   *  existing = the project's own tests/build, generated = new tests written for this project in this run (agent or engine-seeded from the app map),
+   *  engine-adversarial = FThisUp's built-in bounded probes (fuzzing, API/CLI probes), runtime = real browser/app interaction, static = static analysis
+   */
+  kind?: 'existing' | 'generated' | 'engine-adversarial' | 'runtime' | 'static';
+  /** for generated tests: id of the scenario (see RunResults.discovery.records) */
+  generatedId?: string;
 }
 
 export interface EnvironmentInfo {
@@ -216,4 +227,6 @@ export interface RunResults {
   adapters?: AdapterReport[];
   components?: ComponentInfo[];
   sandbox?: { kind: string; note: string };
+  /** autonomous discovery (v0.3): app map summary, generated scenarios and what happened to each */
+  discovery?: import('../autonomous/types.js').DiscoveryReport;
 }

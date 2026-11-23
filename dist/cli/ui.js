@@ -34,6 +34,7 @@ export const CATEGORY_LABEL = {
     startup: 'Startup',
     'static-analysis': 'Static analysis',
     'project-validation': 'Project validation',
+    'autonomous-discovery': 'Generated tests (new)',
 };
 export function progressLine(i, total, name, outcome) {
     if (!process.stdout.isTTY)

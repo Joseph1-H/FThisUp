@@ -9,6 +9,7 @@ export const CATEGORIES = [
     'startup',
     'static-analysis',
     'project-validation',
+    'autonomous-discovery',
 ];
 /** Shared failure taxonomy used by every adapter. */
 export const FAILURE_TYPES = [

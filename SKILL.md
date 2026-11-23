@@ -5,7 +5,7 @@ argument-hint: "[fix | update] [url]"
 license: MIT
 compatibility: Requires Node.js 20+. Each adapter needs its own toolchain (Playwright Chromium for web, python3, cargo, flutter, ...). FThisUp never installs SDKs or dependencies; it reports what is missing. Works offline, no API keys.
 metadata:
-  version: "0.2.0"
+  version: "0.3.0"
 ---
 
 # FThisUp: your code works? Prove it.
@@ -42,16 +42,22 @@ fthisup scan
 ```
 Writes `fthisup-results/project.json` (components, languages, frameworks, test commands, availability) and `discovery.json` (web routes/forms, static warnings). Facts marked `confirmed` came from manifests or the running app; `inferred` ones are heuristics.
 
-## 5. (Optional) Propose extra scenarios
-Only when discovery shows flows the deterministic generators cannot know. Write them to `fthisup-results/agent-scenarios.json` using **only** the typed vocabulary in [references/scenario-format.md](references/scenario-format.md) (`scenarios` for web, `cliScenarios`, `apiScenarios`): no shell, no JavaScript, no executables, no hosts. Validate without executing:
-```bash
-fthisup test --dry-run --scenarios fthisup-results/agent-scenarios.json
-```
-Fix anything listed as `[REJECTED]`. Skip this step when the defaults are enough.
+## 5. Generate NEW adversarial scenarios (this is the point of FThisUp)
+Existing tests only show what the developer already thought of. Your job here is to find what they did not. **Do not stop after the baseline run.**
+
+1. Map the app: `fthisup discover` (add `--runtime` to list already-running devices). It writes `fthisup-results/app-map.json`: screens/widgets, fields, actions, handlers, persistence, async hazards, which widgets no existing test mentions, and a risk score. Read it, then **read the riskiest source files, the README/docs and the existing tests** to learn the expected behaviour.
+2. Write project-specific scenarios to `fthisup-scenarios/flutter.json` (Flutter) using ONLY the typed format in [references/discovery-format.md](references/discovery-format.md). Think like an attacker of THIS app: negative/huge/empty/unicode input in the fields that matter, double and rapid submits, leaving a screen mid-save, interrupted/repeated persistence, gestures during animations. Prioritise business-critical operations, persistence, async work and uncovered interactions. Aim for 8-20 meaningful scenarios, not hundreds.
+3. **Every scenario must say why the behaviour is expected** (`expectation.basis`): `documented` or `code` or `test` with a verbatim `quote` from a real file (the engine verifies it exists), `invariant` for "no uncaught exception/overflow/use-after-dispose", else `assumption`. Never invent a requirement or a quote. An assumption can only ever become "suspected".
+4. Validate without executing: `fthisup test --dry-run --discovery`. Fix everything listed `[REJECTED]`.
+
+For web/API/CLI projects the typed scenario files in [references/scenario-format.md](references/scenario-format.md) (`scenarios`, `cliScenarios`, `apiScenarios`, passed with `--scenarios`) play the same role; their results are tagged "generated" in the report. **Only Flutter has engine-side app mapping and test generation today**; for other ecosystems say so plainly instead of implying autonomous discovery happened.
+
+If you cannot write scenarios (no source access, tool limits) or cannot run the engine safely, **say that explicitly** in your summary; do not silently fall back to "existing tests only". The engine still runs its own seeded invariant scenarios with `--discovery`.
 
 ## 6. Run the real tests
 ```bash
-fthisup test                      # automatic: every applicable adapter
+fthisup test --discovery          # DEFAULT for /fthisup: baseline tests + new generated tests (agent scenarios + seeded invariants)
+fthisup test                      # automatic: every applicable adapter, no generated tests
 fthisup test --url <url>          # also test the running web app / API
 fthisup test --adapter api,cli    # only these adapters (python, javascript, flutter, rust, go, java, cpp, swift, godot, web, api, cli, desktop)
 fthisup test --all                # include opt-in adapters (desktop builds and launches the app)
@@ -59,6 +65,7 @@ fthisup test --all                # include opt-in adapters (desktop builds and 
 Exit code `1` = confirmed issues, `2` = safety/config block, `3` = nothing could run (e.g. app unreachable), `4` = an explicitly selected adapter cannot run / environment problem. Sensitive actions (delete, purchase, sign-up, messaging, upload, irreversible) are **blocked by design**; do not add `approvedActions` yourself. If the user wants them, ask first and name exactly which action.
 
 ## 7. Review and summarize
+Report existing-test results and newly discovered results SEPARATELY (the report does too: findings marked NEW came from generated tests). For each generated finding check the evidence yourself: is the test valid, is the expectation supported (basis + verified reference), was it reproduced N/N? Say which scenarios were invalid, environment limits or rejected. Root causes you suggest are hypotheses unless you verified them in the code.
 Read `fthisup-results/results.json`. Report in this order:
 1. The plan: which components and adapters ran, which were skipped/unavailable and **why** (missing prerequisite + setup hint).
 2. Headline numbers: executed, passed, failed, skipped, blocked.

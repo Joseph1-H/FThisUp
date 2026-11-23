@@ -208,6 +208,35 @@ export declare const configSchema: z.ZodEffects<z.ZodObject<{
         maxFunctions?: number | undefined;
         perCallTimeoutMs?: number | undefined;
     }>>;
+    discovery: z.ZodDefault<z.ZodObject<{
+        /** where the host agent drops typed scenario files for the engine (inside the project) */
+        scenariosDir: z.ZodDefault<z.ZodString>;
+        /** also run engine-seeded invariant scenarios derived from the app map (no agent needed) */
+        seed: z.ZodDefault<z.ZodBoolean>;
+        /** budgets (thorough mode multiplies them) */
+        maxScenarios: z.ZodDefault<z.ZodNumber>;
+        maxExecuted: z.ZodDefault<z.ZodNumber>;
+        reproAttempts: z.ZodDefault<z.ZodNumber>;
+        testTimeoutSeconds: z.ZodDefault<z.ZodNumber>;
+        /** wall-clock budget for the whole generated-test phase */
+        totalTimeoutSeconds: z.ZodDefault<z.ZodNumber>;
+    }, "strict", z.ZodTypeAny, {
+        scenariosDir: string;
+        seed: boolean;
+        maxScenarios: number;
+        maxExecuted: number;
+        reproAttempts: number;
+        testTimeoutSeconds: number;
+        totalTimeoutSeconds: number;
+    }, {
+        scenariosDir?: string | undefined;
+        seed?: boolean | undefined;
+        maxScenarios?: number | undefined;
+        maxExecuted?: number | undefined;
+        reproAttempts?: number | undefined;
+        testTimeoutSeconds?: number | undefined;
+        totalTimeoutSeconds?: number | undefined;
+    }>>;
 }, "strict", z.ZodTypeAny, {
     mode: "safe" | "thorough";
     headless: boolean;
@@ -236,6 +265,15 @@ export declare const configSchema: z.ZodEffects<z.ZodObject<{
         maxCallsPerFunction: number;
         maxFunctions: number;
         perCallTimeoutMs: number;
+    };
+    discovery: {
+        scenariosDir: string;
+        seed: boolean;
+        maxScenarios: number;
+        maxExecuted: number;
+        reproAttempts: number;
+        testTimeoutSeconds: number;
+        totalTimeoutSeconds: number;
     };
     api?: {
         maxEndpoints: number;
@@ -346,6 +384,15 @@ export declare const configSchema: z.ZodEffects<z.ZodObject<{
         maxFunctions?: number | undefined;
         perCallTimeoutMs?: number | undefined;
     } | undefined;
+    discovery?: {
+        scenariosDir?: string | undefined;
+        seed?: boolean | undefined;
+        maxScenarios?: number | undefined;
+        maxExecuted?: number | undefined;
+        reproAttempts?: number | undefined;
+        testTimeoutSeconds?: number | undefined;
+        totalTimeoutSeconds?: number | undefined;
+    } | undefined;
 }>, {
     mode: "safe" | "thorough";
     headless: boolean;
@@ -374,6 +421,15 @@ export declare const configSchema: z.ZodEffects<z.ZodObject<{
         maxCallsPerFunction: number;
         maxFunctions: number;
         perCallTimeoutMs: number;
+    };
+    discovery: {
+        scenariosDir: string;
+        seed: boolean;
+        maxScenarios: number;
+        maxExecuted: number;
+        reproAttempts: number;
+        testTimeoutSeconds: number;
+        totalTimeoutSeconds: number;
     };
     api?: {
         maxEndpoints: number;

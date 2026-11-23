@@ -1,0 +1,153 @@
+import crypto from 'node:crypto';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { runProcess } from '../../exec/run.js';
+import { generateDartTest } from './codegen.js';
+/** Isolated workspace + execution of generated Flutter widget tests. The user's project is only ever READ. */
+const COPY_EXCLUDE = new Set(['.git', 'build', '.dart_tool', 'android', 'ios', 'macos', 'linux', 'windows', 'web', 'node_modules', '.fthisup-tmp', 'fthisup-results', 'fthisup-scenarios', '.idea', '.vscode', 'test', 'integration_test', 'coverage']);
+const live = new Set();
+let hooked = false;
+function hookCleanup() {
+    if (hooked)
+        return;
+    hooked = true;
+    const sweep = () => { for (const d of live) {
+        try {
+            fs.rmSync(d, { recursive: true, force: true });
+        }
+        catch { /* best effort */ }
+    } live.clear(); };
+    process.on('exit', sweep);
+    for (const sig of ['SIGINT', 'SIGTERM'])
+        process.on(sig, () => { sweep(); process.exit(130); });
+}
+export function treeHash(dir, include) {
+    const h = crypto.createHash('sha1');
+    const rec = (d, rel) => {
+        let ents = [];
+        try {
+            ents = fs.readdirSync(d, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name));
+        }
+        catch {
+            return;
+        }
+        for (const e of ents) {
+            const r = rel ? `${rel}/${e.name}` : e.name;
+            if (e.isDirectory()) {
+                if (!/^(\.dart_tool|build|\.git|node_modules|\.fthisup-tmp|fthisup-results)$/.test(e.name))
+                    rec(path.join(d, e.name), r);
+            }
+            else if (include(r)) {
+                try {
+                    h.update(r);
+                    h.update(fs.readFileSync(path.join(d, e.name)));
+                }
+                catch { /* unreadable */ }
+            }
+        }
+    };
+    rec(dir, '');
+    return h.digest('hex');
+}
+export function createWorkspace(compDir) {
+    hookCleanup();
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'fthisup-ws-'));
+    live.add(dir);
+    const copied = [];
+    const rec = (src, dst, rel) => {
+        for (const e of fs.readdirSync(src, { withFileTypes: true })) {
+            if (!rel && COPY_EXCLUDE.has(e.name))
+                continue;
+            if (e.isSymbolicLink())
+                continue; // never follow links out of the project
+            const s = path.join(src, e.name), d = path.join(dst, e.name);
+            if (e.isDirectory()) {
+                fs.mkdirSync(d, { recursive: true });
+                rec(s, d, `${rel}${e.name}/`);
+            }
+            else {
+                fs.copyFileSync(s, d);
+                copied.push(`${rel}${e.name}`);
+            }
+        }
+    };
+    rec(compDir, dir, '');
+    const generatedDir = path.join(dir, 'test', 'fthisup_generated');
+    fs.mkdirSync(generatedDir, { recursive: true });
+    return { dir, root: dir, copied, generatedDir };
+}
+export function destroyWorkspace(ws) {
+    try {
+        fs.rmSync(ws.dir, { recursive: true, force: true });
+    }
+    catch { /* ignore */ }
+    live.delete(ws.dir);
+    return !fs.existsSync(ws.dir);
+}
+/** Parse `flutter test --reporter json` output into a per-scenario view. */
+export function parseGenerated(stdout, ids) {
+    const out = new Map(ids.map((i) => [i, { frameworkErrors: [], ran: false }]));
+    const byTest = new Map();
+    const loading = new Map();
+    for (const line of stdout.split('\n')) {
+        if (!line.startsWith('{'))
+            continue;
+        let e;
+        try {
+            e = JSON.parse(line);
+        }
+        catch {
+            continue;
+        }
+        if (e.type === 'testStart') {
+            const name = String(e.test?.name ?? '');
+            const m = /^FTHISUP::(.+)$/.exec(name);
+            if (m && out.has(m[1])) {
+                byTest.set(e.test.id, m[1]);
+                out.get(m[1]).ran = true;
+            }
+            const l = /^loading .*fthisup_generated[\\/](.+)_test\.dart$/.exec(name);
+            if (l)
+                loading.set(e.test.id, l[1]);
+        }
+        else if (e.type === 'print' && typeof e.message === 'string' && e.message.startsWith('FTHISUP_RESULT ')) {
+            const id = byTest.get(e.testID);
+            if (id) {
+                try {
+                    out.get(id).payload = JSON.parse(e.message.slice('FTHISUP_RESULT '.length));
+                }
+                catch { /* malformed */ }
+            }
+        }
+        else if (e.type === 'error') {
+            const id = byTest.get(e.testID);
+            const lid = loading.get(e.testID);
+            const text = String(e.error ?? '').split('\n').slice(0, 6).join(' | ');
+            if (id)
+                out.get(id).frameworkErrors.push(text);
+            else if (lid && out.has(lid))
+                out.get(lid).loadError = text;
+        }
+    }
+    return out;
+}
+export async function flutterPubGet(ws, timeoutMs) {
+    const r = await runProcess({ file: 'flutter', args: ['pub', 'get', '--offline'], cwd: ws.dir, projectRoot: ws.root, timeoutMs, limits: false });
+    return { stdout: r.stdout, stderr: r.stderr, exitCode: r.exitCode, timedOut: r.timedOut, spawnError: r.spawnError, durationMs: r.durationMs, command: r.command };
+}
+export async function runGeneratedTests(ws, files, perTestSeconds, totalTimeoutMs) {
+    const r = await runProcess({
+        file: 'flutter', args: ['test', '--reporter', 'json', '--no-pub', `--timeout=${perTestSeconds}s`, ...files.map((f) => path.posix.join('test/fthisup_generated', f))],
+        cwd: ws.dir, projectRoot: ws.root, timeoutMs: totalTimeoutMs, limits: false, maxOutputBytes: 4 * 1024 * 1024,
+    });
+    return { stdout: r.stdout, stderr: r.stderr, exitCode: r.exitCode, timedOut: r.timedOut, spawnError: r.spawnError, durationMs: r.durationMs, command: r.command };
+}
+export function writeScenarioTests(ws, scenarios, cg) {
+    return scenarios.map((sc) => {
+        const file = `${sc.id}_test.dart`;
+        const source = generateDartTest(sc, cg);
+        fs.writeFileSync(path.join(ws.generatedDir, file), source, 'utf8');
+        return { id: sc.id, file, source };
+    });
+}

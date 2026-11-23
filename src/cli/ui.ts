@@ -37,6 +37,7 @@ export const CATEGORY_LABEL: Record<string, string> = {
   startup: 'Startup',
   'static-analysis': 'Static analysis',
   'project-validation': 'Project validation',
+  'autonomous-discovery': 'Generated tests (new)',
 };
 
 export function progressLine(i: number, total: number, name: string, outcome: string) {

@@ -22,6 +22,9 @@ import { detectLocalUrl } from '../utils/ports.js';
 import { confine, findProjectRoot, ProjectScopeError } from '../utils/project-root.js';
 import { checkTargetOwnership, foreignPortChecker } from '../safety/scope.js';
 import { VERSION } from '../utils/version.js';
+import { buildMaps, supportMatrix } from '../autonomous/pipeline.js';
+import { detectFlutterRuntime } from '../autonomous/flutter/runtime.js';
+import { seedScenarios } from '../autonomous/flutter/seed.js';
 import { findInstalls, selfRoot, updateCheckout, updateGlobalInstall, isGlobalNpmInstall, INSTALL_SPEC, REPO_URL } from './update.js';
 import { BANNER, CATEGORY_LABEL, c, clearProgress, printBanner, progressLine, tag } from './ui.js';
 const EXIT = { OK: 0, BUGS: 1, BLOCKED: 2, UNREACHABLE: 3, ENV: 4 };
@@ -134,7 +137,7 @@ async function testCommand(o) {
         let planned;
         try {
             const orch = await orchestrate({
-                root: cwd, config, explicitUrl: o.url, apiUrl: o.apiUrl, adapters, all: o.all, scenariosFile: o.scenarios, dryRun: o.dryRun, skipStatic: o.static === false,
+                root: cwd, config, explicitUrl: o.url, apiUrl: o.apiUrl, adapters, all: o.all, scenariosFile: o.scenarios, discovery: o.discovery, dryRun: o.dryRun, skipStatic: o.static === false,
                 onStage: (s) => { if (!quiet && s !== lastStage && /^(Discovering|Generating|Attempting)/.test(s)) {
                     lastStage = s;
                     console.log(`   ${s}`);
@@ -150,6 +153,8 @@ async function testCommand(o) {
                 const tests = pl.selections.flatMap((s) => (s.plan?.tests ?? []).map((t) => ({ ...t, adapter: s.adapter.id })));
                 const dropped = pl.selections.reduce((n, s) => n + (s.plan?.droppedByCap ?? 0), 0);
                 console.log(`\n   Dry run: ${tests.length} scenario(s) would run (${dropped} dropped by --max-tests).`);
+                if (results.discovery)
+                    printDiscovery(results.discovery, true);
                 for (const t of tests)
                     console.log(`   ${c.gray(`${t.adapter}/${t.category}`.padEnd(26))} ${t.id}${t.requiresApproval ? c.yellow('  [needs approval]') : ''}`);
                 for (const s of pl.selections) {
@@ -165,6 +170,11 @@ async function testCommand(o) {
                 if (name.endsWith('.json'))
                     writeJsonFile(outDir, name, data);
             writeJsonFile(outDir, 'project.json', planned?.ctx.manifest ?? {});
+            for (const [rel, text] of Object.entries(orch.testFiles)) {
+                const f = path.join(outDir, rel);
+                fs.mkdirSync(path.dirname(f), { recursive: true });
+                fs.writeFileSync(f, text, 'utf8');
+            }
             let reportFile;
             if (config.report === 'html')
                 reportFile = writeReport(outDir, results);
@@ -217,6 +227,27 @@ function printPlan(p) {
     }
     console.log('');
 }
+function printDiscovery(d, dry) {
+    const k = d.counts;
+    console.log(`\n   ${c.bold('FThisUp Autonomous Discovery')}${dry ? c.gray('  (dry run: validated only)') : ''}`);
+    for (const m of d.appMap ?? []) {
+        const t = m.summary;
+        console.log(`   ${c.gray('Flutter app')} ${m.component}: ${t.screens} screens, ${t.forms} forms, ${t.inputFields} input fields, ${t.persistenceWorkflows} persistence workflows, ${t.gestureInteractions} gesture interactions (${t.uncoveredWidgets} interactive widgets no existing test mentions)`);
+    }
+    for (const e of d.existingTests ?? [])
+        console.log(`   ${c.gray('Existing project tests:')} ${e.passed} passed${e.failed ? `, ${e.failed} failed` : ''} (${e.component})`);
+    console.log(`   ${c.gray('New scenarios:')} ${k.generated} generated · ${k.validated} validated · ${k.executed} executed · ${k.skipped} skipped${k.rejected ? ` · ${k.rejected} rejected` : ''}`);
+    if (!dry && k.executed)
+        console.log(`   ${c.gray('Outcome of executed:')} ${k.passed} passed · ${k.confirmed} confirmed new bug(s) · ${k.suspected} suspected · ${k.notReproducible} not reproducible · ${k.invalid} invalid test(s) · ${k.environment} environment limit(s)`);
+    if (d.agentScenarioFiles.length)
+        console.log(`   ${c.gray('Agent scenario files:')} ${d.agentScenarioFiles.join(', ')}`);
+    else if (d.appMap?.length)
+        console.log(`   ${c.yellow('No agent-written scenarios found')} in the scenarios folder: only engine-seeded invariant scenarios ran. In your agent, /fthisup writes project-specific ones (see \`fthisup discover\`).`);
+    for (const l of d.limitations.slice(0, 6))
+        console.log(`   ${c.gray('limit:')} ${l}`);
+    if (d.limitations.length > 6)
+        console.log(`   ${c.gray(`… ${d.limitations.length - 6} more limitation(s) in the report`)}`);
+}
 function printSummary(results, reportPath, rejected, blocked = []) {
     const S = results.summary;
     console.log('');
@@ -235,6 +266,8 @@ function printSummary(results, reportPath, rejected, blocked = []) {
         const where = f.component && (results.components?.length ?? 0) > 1 ? c.gray(` [${f.component}]`) : '';
         console.log(`   ${st} ${c.bold(f.severity.toUpperCase().padEnd(8))} ${f.title} ${c.gray(f.route)}${where}`);
     }
+    if (results.discovery)
+        printDiscovery(results.discovery, false);
     const warnings = issues.filter((f) => f.source === 'static-analysis').length;
     if (warnings)
         console.log(`\n   ${tag.warn()} ${warnings} static-analysis warning(s) (heuristic, unconfirmed) — see report`);
@@ -274,6 +307,7 @@ const addTestOptions = (cmd) => cmd
     .option('--all', 'run every applicable adapter, including opt-in ones (desktop builds/launches your app)')
     .option('--api-url <url>', 'base URL of the API under test (default: --url)')
     .option('--scenarios <file>', 'additional scenarios (JSON) proposed by an AI agent; validated before running')
+    .option('--discovery', 'also generate, validate and run NEW project-specific tests (agent-written typed scenarios in ./fthisup-scenarios + engine-seeded invariants); see `fthisup discover`')
     .option('--dry-run', 'discover + generate + validate scenarios, but do not execute them')
     .option('--start', 'start the app using "startCommand" from the config, and stop it afterwards')
     .option('--no-static', 'skip static code analysis warnings')
@@ -486,6 +520,61 @@ program.command('doctor').description('Check Node, Playwright browsers, configur
     }
     console.log(bad ? `\n   ${c.red(`${bad} problem(s) found.`)}\n` : `\n   ${c.green('All required checks passed.')}\n`);
     process.exitCode = bad ? EXIT.ENV : EXIT.OK;
+});
+program.command('discover').description('Map the application (screens, forms, actions, persistence, existing-test gaps) so an agent can write targeted adversarial scenarios')
+    .option('--config <file>', 'config file')
+    .option('--example', 'print one valid example scenario for the riskiest screen (the typed format agents write)')
+    .option('--print', 'print the full application map as JSON')
+    .option('--runtime', 'also list already-running Android/iOS devices (never starts one)')
+    .action(async (o) => {
+    const cwd = requireProject();
+    try {
+        const { config } = loadConfig(cwd, o.config);
+        const manifest = detectProjectManifest(cwd);
+        const ctx = { root: cwd, manifest, config, target: { url: null, source: 'none' }, apiUrl: null };
+        const maps = buildMaps(ctx);
+        const outDir = path.resolve(cwd, config.output);
+        scoped(cwd, config.output, 'output directory');
+        if (o.print) {
+            console.log(JSON.stringify(maps.length === 1 ? maps[0] : maps, null, 2));
+            return;
+        }
+        printBanner();
+        console.log(`   ${c.bold('Autonomous discovery support')}`);
+        for (const s of supportMatrix(ctx))
+            console.log(`   ${s.implemented ? (s.supported ? c.green('✓') : c.yellow('!')) : c.gray('-')} ${(s.component ?? '').padEnd(14)} ${s.adapter.padEnd(8)} ${c.gray(s.reason)}`);
+        if (!maps.length) {
+            console.log(`\n   ${c.yellow('No Flutter application found.')} Autonomous scenario generation is implemented for Flutter apps; other adapters run existing tests and built-in adversarial probes.\n`);
+            return;
+        }
+        for (const m of maps) {
+            writeJsonFile(outDir, maps.length === 1 ? 'app-map.json' : `app-map-${m.component.replace(/[^\w]+/g, '-')}.json`, m);
+            console.log(`\n   ${c.bold(`Application map: ${m.package}`)} ${c.gray(`(${m.component})`)}`);
+            const t = m.totals;
+            console.log(`   ${t.screens} screens · ${t.forms} forms · ${t.inputFields} input fields · ${t.actions} actions · ${t.persistenceWorkflows} persistence workflows · ${t.gestureInteractions} gesture interactions`);
+            console.log(`   Existing tests: ${m.existingTests.testCount} (${m.existingTests.widgetTestCount} widget tests) referencing ${m.existingTests.referencedClasses.length} of ${m.screens.length} widgets · integrations: ${m.integrations.join(', ') || 'none'}`);
+            console.log(`\n   ${c.bold('Riskiest widgets')} ${c.gray('(score: more = more worth attacking)')}`);
+            for (const s of m.screens.filter((x) => x.fields.length || x.actions.length).slice(0, 8)) {
+                console.log(`   ${String(s.risk).padStart(2)}  ${s.class} ${c.gray(`${s.file}:${s.line}${s.constructor.pumpable ? '' : ` · needs ${s.constructor.reason}`}${s.dependsOn.length ? ` · uses ${s.dependsOn.join(', ')}` : ''}`)}`);
+                for (const r of s.riskReasons.slice(0, 4))
+                    console.log(`       ${c.gray('· ' + r)}`);
+            }
+            if (o.example) {
+                const seeds = seedScenarios(m, 1).scenarios;
+                const ex = seeds[0];
+                if (ex)
+                    console.log(`\n   Example scenario (put scenarios in ${config.discovery.scenariosDir}/flutter.json):\n${JSON.stringify({ version: 1, adapter: 'flutter', scenarios: [{ ...ex, id: 'example-' + ex.id.replace(/^seed-/, ''), method: 'agent' }] }, null, 2)}`);
+            }
+            if (o.runtime) {
+                const rt = await detectFlutterRuntime(path.resolve(cwd, m.component), cwd);
+                console.log(`\n   Runtime: ${rt.note}${rt.devices.length ? `\n   Devices: ${rt.devices.map((d) => `${d.name} (${d.platform}${d.emulator ? ', emulator' : ''})`).join(', ')}` : ''}`);
+            }
+        }
+        console.log(`\n   Map written to ${path.join(config.output, 'app-map.json')}. Next: write typed scenarios to ${config.discovery.scenariosDir}/flutter.json, then run \`fthisup test --discovery\`.\n   Format: references/discovery-format.md in the skill (or run with --example).\n`);
+    }
+    catch (e) {
+        handleKnown(e);
+    }
 });
 program.command('install-skill').description('Copy the FThisUp Agent Skill into your coding agents\' skills directories (explicit, never automatic)')
     .option('--agent <agent>', 'claude | codex | cursor | all (default: auto-detect the agents you use)')

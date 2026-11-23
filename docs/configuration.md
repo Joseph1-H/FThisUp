@@ -90,3 +90,10 @@ CLI flags added in v0.2: `--adapter <ids...>`, `--all`, `--api-url <url>`.
 | 2 | Blocked by safety policy or invalid configuration/options |
 | 3 | Target unreachable, or nothing could be executed |
 | 4 | An explicitly requested adapter cannot run, or an environment problem (browser missing, unexpected error) |
+
+
+## `discovery` (v0.3)
+```json
+{ "discovery": { "scenariosDir": "./fthisup-scenarios", "seed": true, "maxScenarios": 24, "maxExecuted": 20, "reproAttempts": 2, "testTimeoutSeconds": 60, "totalTimeoutSeconds": 420 } }
+```
+Only used with `fthisup test --discovery`. `seed: false` runs only agent-written scenarios. See [autonomous-discovery.md](autonomous-discovery.md).

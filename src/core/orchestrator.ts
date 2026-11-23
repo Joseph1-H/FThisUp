@@ -10,6 +10,7 @@ import { summarize } from './findings.js';
 import { resolveTarget } from './target.js';
 import type { AdapterReport, AdapterStatus, ComponentInfo, Finding, RunResults, TestResult } from './types.js';
 import { VERSION } from '../utils/version.js';
+import { runDiscovery, type DiscoveryOutcome } from '../autonomous/pipeline.js';
 
 export interface OrchestratorOptions {
   root: string;
@@ -22,6 +23,8 @@ export interface OrchestratorOptions {
   scenariosFile?: string;
   dryRun?: boolean;
   skipStatic?: boolean;
+  /** v0.3: also generate, validate and run NEW project-specific tests (agent-supplied typed scenarios + engine-seeded invariants) */
+  discovery?: boolean;
   /** concurrency across adapters (default 2) */
   parallel?: number;
   onStage?: (s: string) => void;
@@ -102,6 +105,8 @@ export interface OrchestrationResult {
   /** an explicitly requested adapter could not run (exit code 4) */
   explicitProblems: Array<{ id: string; reason: string }>;
   blocked: Array<{ id: string; reason: string }>;
+  /** generated Dart/etc. test sources to persist as evidence (relative path → text) */
+  testFiles: Record<string, string>;
 }
 
 export async function orchestrate(opts: OrchestratorOptions): Promise<OrchestrationResult> {
@@ -114,6 +119,7 @@ export async function orchestrate(opts: OrchestratorOptions): Promise<Orchestrat
 
   const outcomes = new Map<string, AdapterOutcome & { ms: number; error?: string }>();
   const artifacts: Record<string, unknown> = {};
+  const coverageErrors: string[] = [];
 
   if (!opts.dryRun) {
     const groups = new Map<string, Mutex>();
@@ -143,6 +149,17 @@ export async function orchestrate(opts: OrchestratorOptions): Promise<Orchestrat
     for (const s of exclusive) await runOne(s);
   }
 
+  // ---- autonomous discovery (after the baseline so it never competes with it for CPU) --------------------
+  let discovery: DiscoveryOutcome | undefined;
+  if (opts.discovery) {
+    const baseline = [...new Set(selections.filter((x) => x.adapter.id === 'flutter').flatMap((x) => x.components))].map((cid) => {
+      const rs = (outcomes.get('flutter')?.results ?? []).filter((r) => r.component === cid && r.category === 'unit-tests');
+      return { component: cid, passed: rs.filter((r) => r.outcome === 'passed').length, failed: rs.filter((r) => r.outcome === 'failed').length };
+    });
+    try { discovery = await runDiscovery({ ctx, mode: ctx.config.mode, dryRun: opts.dryRun, outDir: options.outDir, adapters: opts.adapters, onStage: opts.onStage, baseline }); }
+    catch (e) { discovery = undefined; coverageErrors.push(`Autonomous discovery failed unexpectedly: ${(e as Error).message}`); }
+  }
+
   // ---- aggregate -------------------------------------------------------------------------
   const allResults: TestResult[] = [];
   const allFindings: Finding[] = [];
@@ -153,6 +170,16 @@ export async function orchestrate(opts: OrchestratorOptions): Promise<Orchestrat
   const coverage = { routesDiscovered: 0, routesTested: 0, formsDiscovered: 0, formsTested: 0, notes: [] as string[] };
   let safety: RunResults['safety'] | undefined;
   let env: { browser?: string; browserVersion?: string; headless?: boolean } = {};
+
+  if (discovery) {
+    const map = new Map<string, string>();
+    for (const f of discovery.findings) { const id = `F${String(++seq).padStart(3, '0')}`; map.set(f.id, id); allFindings.push({ ...f, id }); }
+    for (const r of discovery.results) allResults.push({ ...r, findingId: r.findingId ? map.get(r.findingId) ?? r.findingId : undefined });
+    for (const rec of discovery.report.records) if (rec.findingId) rec.findingId = map.get(rec.findingId) ?? rec.findingId;
+    for (const [k, v] of Object.entries(discovery.artifacts)) artifacts[k] = v;
+    coverage.notes.push(...discovery.notes, ...discovery.report.limitations.map((l) => `Discovery limit: ${l}`));
+  }
+  coverage.notes.push(...coverageErrors);
 
   for (const sel of selections) {
     const out = outcomes.get(sel.adapter.id);
@@ -203,6 +230,14 @@ export async function orchestrate(opts: OrchestratorOptions): Promise<Orchestrat
     }));
   }
 
+  // where each check came from (existing project tests vs new generated tests vs built-in probes ...)
+  for (const r of allResults) {
+    if (r.kind) continue;
+    r.kind = r.origin === 'agent' ? 'generated'
+      : r.category === 'static-analysis' ? 'static'
+      : r.category === 'unit-tests' || r.category === 'build' || r.category === 'startup' || r.category === 'project-validation' ? 'existing'
+      : ['api', 'cli', 'fuzzing'].includes(r.category) ? 'engine-adversarial' : 'runtime';
+  }
   const components: ComponentInfo[] = ctx.manifest.components.map((c) => ({ id: c.id, path: c.path, kind: c.roles.join('+') || 'unknown', languages: c.languages, frameworks: c.frameworks, confidence: c.confidence }));
   const sb = sandboxInfo();
   coverage.notes.push('Passing tests do not prove the project is bug-free; they only show these specific checks did not fail.');
@@ -214,8 +249,8 @@ export async function orchestrate(opts: OrchestratorOptions): Promise<Orchestrat
     summary: summarize(allResults, allFindings),
     results: allResults, findings: allFindings,
     coverage: { ...coverage, notes: [...new Set([...coverage.notes, ...(options.dryRun ? ['Dry run: nothing was executed.'] : [])])] },
-    adapters: reports, components,
+    adapters: reports, components, ...(discovery ? { discovery: discovery.report } : {}),
     sandbox: { kind: sb.kind ?? 'none', note: sb.available ? 'bubblewrap: read-only filesystem, scratch dir writable, no network, for processes that run project code with hostile input.' : `No OS sandbox (${sb.reason}); process isolation is limited to allow-listed executables, sanitized environment, scratch working directory, timeouts and output caps.` },
   };
-  return { results: final, planned, artifacts, explicitProblems, blocked };
+  return { results: final, planned, artifacts, explicitProblems, blocked, testFiles: discovery?.testFiles ?? {} };
 }

@@ -23,6 +23,10 @@ Then, in your agent, inside the project you want tested: `/fthisup`. Or from a t
 
 `/fthisup` inside Claude Code, Codex or Cursor does the same through the [agent skill](#agent-integration).
 
+## v0.3: it writes its own tests
+
+Existing tests only show what the developer already thought of. With `/fthisup` (or `fthisup test --discovery`) FThisUp maps your app, your agent writes **typed, validated** adversarial scenarios from the actual code and docs, and the engine runs them in an isolated copy, re-runs every failure, and reports new findings separately from the project's own tests. Implemented and verified for **Flutter** (widget tests); other ecosystems keep existing tests plus built-in probes and say so. Details, safety model and a measured benchmark: [docs/autonomous-discovery.md](docs/autonomous-discovery.md).
+
 ## A real run
 
 The repo ships deliberately buggy and deliberately clean fixture projects for every adapter. This is the **unedited** output of `npx fthisup test` on a monorepo assembled from them: a buggy API, a buggy Node CLI, a Python library with a failing suite, a clean Rust crate and a clean Flutter package (Linux, Node 22; 40 seconds; the tool exited 1). Some findings are omitted here for length; all are in the report.
@@ -127,6 +131,8 @@ fthisup test --dry-run        # show the plan and validate agent scenarios; exec
 fthisup report                # regenerate report.html from results.json
 fthisup doctor                # which adapters can run right now, and what each missing prerequisite needs
 fthisup init                  # write fthisup.config.json
+fthisup discover              # map the app (screens, forms, persistence, test gaps) so your agent can write targeted scenarios
+fthisup test --discovery      # baseline tests + NEW generated tests (agent scenarios + seeded invariants), isolated, reproduced
 fthisup install-skill         # copy the agent skill into Claude Code / Codex / Cursor
 fthisup update                # update FThisUp to the latest version (says so if you already have it); --check only looks
 ```

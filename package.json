@@ -1,6 +1,6 @@
 {
   "name": "fthisup",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Your code works? Prove it. An AI-assisted tool that attempts to break web apps, APIs, CLIs and libraries with real execution, then reports only what really failed.",
   "keywords": [
     "testing",

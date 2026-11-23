@@ -12,6 +12,8 @@ export interface OrchestratorOptions {
     scenariosFile?: string;
     dryRun?: boolean;
     skipStatic?: boolean;
+    /** v0.3: also generate, validate and run NEW project-specific tests (agent-supplied typed scenarios + engine-seeded invariants) */
+    discovery?: boolean;
     /** concurrency across adapters (default 2) */
     parallel?: number;
     onStage?: (s: string) => void;
@@ -48,5 +50,7 @@ export interface OrchestrationResult {
         id: string;
         reason: string;
     }>;
+    /** generated Dart/etc. test sources to persist as evidence (relative path → text) */
+    testFiles: Record<string, string>;
 }
 export declare function orchestrate(opts: OrchestratorOptions): Promise<OrchestrationResult>;

@@ -7,6 +7,7 @@ import { sandboxInfo } from '../exec/sandbox.js';
 import { summarize } from './findings.js';
 import { resolveTarget } from './target.js';
 import { VERSION } from '../utils/version.js';
+import { runDiscovery } from '../autonomous/pipeline.js';
 export class UnknownAdapterError extends Error {
 }
 const TAG_COMPONENT = (m, file) => {
@@ -72,6 +73,7 @@ export async function orchestrate(opts) {
     const ready = selections.filter((s) => s.status === 'ran' && s.plan);
     const outcomes = new Map();
     const artifacts = {};
+    const coverageErrors = [];
     if (!opts.dryRun) {
         const groups = new Map();
         const lock = (g) => groups.get(g) ?? groups.set(g, new Mutex()).get(g);
@@ -102,6 +104,21 @@ export async function orchestrate(opts) {
         for (const s of exclusive)
             await runOne(s);
     }
+    // ---- autonomous discovery (after the baseline so it never competes with it for CPU) --------------------
+    let discovery;
+    if (opts.discovery) {
+        const baseline = [...new Set(selections.filter((x) => x.adapter.id === 'flutter').flatMap((x) => x.components))].map((cid) => {
+            const rs = (outcomes.get('flutter')?.results ?? []).filter((r) => r.component === cid && r.category === 'unit-tests');
+            return { component: cid, passed: rs.filter((r) => r.outcome === 'passed').length, failed: rs.filter((r) => r.outcome === 'failed').length };
+        });
+        try {
+            discovery = await runDiscovery({ ctx, mode: ctx.config.mode, dryRun: opts.dryRun, outDir: options.outDir, adapters: opts.adapters, onStage: opts.onStage, baseline });
+        }
+        catch (e) {
+            discovery = undefined;
+            coverageErrors.push(`Autonomous discovery failed unexpectedly: ${e.message}`);
+        }
+    }
     // ---- aggregate -------------------------------------------------------------------------
     const allResults = [];
     const allFindings = [];
@@ -112,6 +129,23 @@ export async function orchestrate(opts) {
     const coverage = { routesDiscovered: 0, routesTested: 0, formsDiscovered: 0, formsTested: 0, notes: [] };
     let safety;
     let env = {};
+    if (discovery) {
+        const map = new Map();
+        for (const f of discovery.findings) {
+            const id = `F${String(++seq).padStart(3, '0')}`;
+            map.set(f.id, id);
+            allFindings.push({ ...f, id });
+        }
+        for (const r of discovery.results)
+            allResults.push({ ...r, findingId: r.findingId ? map.get(r.findingId) ?? r.findingId : undefined });
+        for (const rec of discovery.report.records)
+            if (rec.findingId)
+                rec.findingId = map.get(rec.findingId) ?? rec.findingId;
+        for (const [k, v] of Object.entries(discovery.artifacts))
+            artifacts[k] = v;
+        coverage.notes.push(...discovery.notes, ...discovery.report.limitations.map((l) => `Discovery limit: ${l}`));
+    }
+    coverage.notes.push(...coverageErrors);
     for (const sel of selections) {
         const out = outcomes.get(sel.adapter.id);
         let status = sel.status;
@@ -177,6 +211,15 @@ export async function orchestrate(opts) {
             failureType: 'incomplete-functionality', evidenceKind: 'static-heuristic', scope: `source ${f.file ?? ''}${f.line ? `:${f.line}` : ''}`,
         }));
     }
+    // where each check came from (existing project tests vs new generated tests vs built-in probes ...)
+    for (const r of allResults) {
+        if (r.kind)
+            continue;
+        r.kind = r.origin === 'agent' ? 'generated'
+            : r.category === 'static-analysis' ? 'static'
+                : r.category === 'unit-tests' || r.category === 'build' || r.category === 'startup' || r.category === 'project-validation' ? 'existing'
+                    : ['api', 'cli', 'fuzzing'].includes(r.category) ? 'engine-adversarial' : 'runtime';
+    }
     const components = ctx.manifest.components.map((c) => ({ id: c.id, path: c.path, kind: c.roles.join('+') || 'unknown', languages: c.languages, frameworks: c.frameworks, confidence: c.confidence }));
     const sb = sandboxInfo();
     coverage.notes.push('Passing tests do not prove the project is bug-free; they only show these specific checks did not fail.');
@@ -188,8 +231,8 @@ export async function orchestrate(opts) {
         summary: summarize(allResults, allFindings),
         results: allResults, findings: allFindings,
         coverage: { ...coverage, notes: [...new Set([...coverage.notes, ...(options.dryRun ? ['Dry run: nothing was executed.'] : [])])] },
-        adapters: reports, components,
+        adapters: reports, components, ...(discovery ? { discovery: discovery.report } : {}),
         sandbox: { kind: sb.kind ?? 'none', note: sb.available ? 'bubblewrap: read-only filesystem, scratch dir writable, no network, for processes that run project code with hostile input.' : `No OS sandbox (${sb.reason}); process isolation is limited to allow-listed executables, sanitized environment, scratch working directory, timeouts and output caps.` },
     };
-    return { results: final, planned, artifacts, explicitProblems, blocked };
+    return { results: final, planned, artifacts, explicitProblems, blocked, testFiles: discovery?.testFiles ?? {} };
 }

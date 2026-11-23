@@ -3,7 +3,7 @@ export type Confidence = 'high' | 'medium' | 'low';
 export type FindingStatus = 'confirmed' | 'suspected' | 'not-reproducible' | 'skipped' | 'blocked';
 export type Outcome = 'passed' | 'failed' | 'skipped' | 'blocked';
 export declare const WEB_CATEGORIES: readonly ["navigation", "form-validation", "ui-chaos", "network-failure", "authentication", "code-analysis"];
-export declare const CATEGORIES: readonly ["navigation", "form-validation", "ui-chaos", "network-failure", "authentication", "code-analysis", "api", "cli", "unit-tests", "fuzzing", "build", "startup", "static-analysis", "project-validation"];
+export declare const CATEGORIES: readonly ["navigation", "form-validation", "ui-chaos", "network-failure", "authentication", "code-analysis", "api", "cli", "unit-tests", "fuzzing", "build", "startup", "static-analysis", "project-validation", "autonomous-discovery"];
 export type Category = (typeof CATEGORIES)[number];
 /** Shared failure taxonomy used by every adapter. */
 export declare const FAILURE_TYPES: readonly ["crash", "unhandled-exception", "hang", "incorrect-output", "invalid-state-transition", "data-corruption", "input-validation", "resource-usage", "build-failure", "dependency-failure", "auth-error", "network-error-handling", "ui-interaction", "regression", "incomplete-functionality", "broken-navigation", "security-weakness", "layout-defect"];
@@ -81,6 +81,14 @@ export interface Finding {
     evidenceKind?: EvidenceKind;
     /** human-readable scope, e.g. "api GET /users", "cli: mytool --help", "test tests/test_x.py::test_y" */
     scope?: string;
+    /** set when this finding was found by a NEWLY GENERATED test (not by the project's own tests) */
+    discovery?: {
+        scenarioId: string;
+        method: 'agent' | 'engine-heuristic';
+        basis: string;
+        feature: string;
+        testFile?: string;
+    };
 }
 export interface TestResult {
     scenarioId: string;
@@ -96,6 +104,14 @@ export interface TestResult {
     origin: 'heuristic' | 'agent';
     adapter?: string;
     component?: string;
+    /**
+     * Where the check came from, for the report:
+     *  existing = the project's own tests/build, generated = new tests written for this project in this run (agent or engine-seeded from the app map),
+     *  engine-adversarial = FThisUp's built-in bounded probes (fuzzing, API/CLI probes), runtime = real browser/app interaction, static = static analysis
+     */
+    kind?: 'existing' | 'generated' | 'engine-adversarial' | 'runtime' | 'static';
+    /** for generated tests: id of the scenario (see RunResults.discovery.records) */
+    generatedId?: string;
 }
 export interface EnvironmentInfo {
     fthisupVersion: string;
@@ -191,4 +207,6 @@ export interface RunResults {
         kind: string;
         note: string;
     };
+    /** autonomous discovery (v0.3): app map summary, generated scenarios and what happened to each */
+    discovery?: import('../autonomous/types.js').DiscoveryReport;
 }

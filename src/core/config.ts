@@ -69,6 +69,22 @@ const desktopSchema = z
   })
   .strict();
 
+const discoverySchema = z
+  .object({
+    /** where the host agent drops typed scenario files for the engine (inside the project) */
+    scenariosDir: z.string().default('./fthisup-scenarios'),
+    /** also run engine-seeded invariant scenarios derived from the app map (no agent needed) */
+    seed: z.boolean().default(true),
+    /** budgets (thorough mode multiplies them) */
+    maxScenarios: z.number().int().min(1).max(300).default(24),
+    maxExecuted: z.number().int().min(1).max(300).default(20),
+    reproAttempts: z.number().int().min(1).max(5).default(2),
+    testTimeoutSeconds: z.number().int().min(10).max(600).default(60),
+    /** wall-clock budget for the whole generated-test phase */
+    totalTimeoutSeconds: z.number().int().min(30).max(3600).default(420),
+  })
+  .strict();
+
 const fuzzSchema = z
   .object({
     enabled: z.boolean().default(true),
@@ -136,6 +152,7 @@ const baseConfig = z
     cli: cliSchema.optional(),
     desktop: desktopSchema.optional(),
     fuzz: fuzzSchema.default({}),
+    discovery: discoverySchema.default({}),
   })
   .strict();
 

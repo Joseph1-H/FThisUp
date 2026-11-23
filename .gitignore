@@ -3,3 +3,7 @@ fthisup-results
 .fthisup-tmp
 *.tgz
 .DS_Store
+
+# Flutter fixture build output
+tests/fixtures/**/.dart_tool/
+tests/fixtures/**/build/
