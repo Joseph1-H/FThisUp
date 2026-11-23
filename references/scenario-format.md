@@ -1,4 +1,4 @@
-# Scenario format (typed, restricted)
+# Scenario formats (typed, restricted)
 
 A scenario is **data**, never code. FThisUp validates every scenario against a strict schema; unknown fields, unknown actions and off-origin navigation are rejected before anything runs. Scenarios you propose are executed under the same safety policy as built-in ones (blocked/approval rules, no third-party traffic, request-rate caps).
 
@@ -50,5 +50,33 @@ Selectors are Playwright selectors. Use the ones in `discovery.json` (`form >> n
 `noUncaughtExceptions`, `noBlankPage`, `pageStatusOk` (`hard?`), `noRedirectLoop`, `noMissingResources`, `noServerErrors`, `noHorizontalOverflow`, `noScriptInjection`, `noUnexpectedAuthRedirect`, `maxMutatingRequests` (`max`), `noRequestWhenInvalid` (`hard?`), `visibleFeedbackOnFailure`, `stillInteractive`, `urlNotMatches` (`pattern`), `gatedContent` (`loginPathPattern?`, `hard?`), `selectorVisible` / `selectorNotVisible` (`selector`), `loginFormVisible`.
 
 "Hard" expectations are objectively measurable and can produce a **confirmed** finding once reproduced. Soft (heuristic) ones can only produce **suspected** findings.
+
+## One file, three sections
+
+```json
+{ "scenarios": [ /* web (Playwright): below */ ],
+  "cliScenarios": [ /* command-line apps */ ],
+  "apiScenarios": [ /* HTTP APIs */ ] }
+```
+
+### `cliScenarios`
+The **executable is never part of a scenario**; `target` names a discovered or configured CLI.
+```json
+{ "id": "tool-empty-config", "name": "Empty config file", "target": "mytool", "argv": ["--config", "x"],
+  "stdin": { "kind": "empty" }, "signal": { "afterMs": 500, "name": "SIGINT" }, "timeoutMs": 5000,
+  "expect": [{ "type": "noCrash" }, { "type": "noStackTrace" }, { "type": "terminates" }],
+  "risk": "low", "requiresApproval": false }
+```
+`stdin.kind`: `empty` | `text` (`text`) | `unicode` | `binary` (`bytes` ≤ 1,000,000) | `long` (`bytes` ≤ 5,000,000). `argv`: ≤ 30 plain strings (no shell, no expansion, no NUL). Expectations: `noCrash`, `noStackTrace`, `terminates`, `exitCode` (`oneOf`), `nonZeroExit`, `stderrEmpty`, `stdoutContains`/`stderrContains` (`text`), `exitsWithinMs` (`ms`).
+
+### `apiScenarios`
+Only a **path** is supplied; the host is always the authorized API target. No `Host`/`Authorization`/`Cookie` headers.
+```json
+{ "id": "users-huge-name", "name": "Huge name", "method": "POST", "path": "/users",
+  "json": { "name": "AAAA" }, "rawBody": "{broken", "contentType": "application/json",
+  "query": { "a": "b" }, "headers": { "x-trace": "1" },
+  "expect": [{ "type": "no5xx" }, { "type": "rejects" }], "risk": "medium" }
+```
+Use `json` (a value) **or** `rawBody` (a string, for deliberately malformed bodies), not both. Methods: GET/HEAD/OPTIONS/POST/PUT/PATCH/DELETE (DELETE needs `deletion` approval). Expectations: `no5xx`, `statusIn` (`codes`), `rejects` (4xx), `respondsWithinMs` (`ms`), `jsonBody`, `bodyContains` (`text`).
 
 Validate before running: `npx fthisup test --url <url> --scenarios file.json --dry-run`.

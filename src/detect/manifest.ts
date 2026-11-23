@@ -363,6 +363,12 @@ export function detectProjectManifest(root: string): ProjectManifest {
     if (has(dir, 'Gemfile')) { const c = mk(root, dir, 'ruby', 'medium', ['Gemfile']); c.languages.push('Ruby'); c.roles.push('unknown'); c.notes.push('Ruby is detected but not supported by any FThisUp adapter yet.'); comps.push(c); }
     if (has(dir, 'composer.json')) { const c = mk(root, dir, 'php', 'medium', ['composer.json']); c.languages.push('PHP'); c.roles.push('unknown'); c.notes.push('PHP is detected but not supported by any FThisUp adapter yet.'); comps.push(c); }
   }
+  // platform host projects inside Flutter/React-Native apps (android/ build.gradle, ios/, ...) are part of that app, not separate components
+  const hosts = comps.filter((c) => c.ecosystem === 'flutter' || c.frameworks.includes('react-native') || c.frameworks.includes('expo')).map((c) => c.path);
+  for (let i = comps.length - 1; i >= 0; i--) {
+    const c = comps[i]!;
+    if (hosts.some((h) => c.path !== h && /^(android|ios|macos|linux|windows|web)(\/|$)/.test(h === '.' ? c.path : c.path.slice(h.length + 1)) && (h === '.' || c.path.startsWith(`${h}/`)))) comps.splice(i, 1);
+  }
   // a package.json-less static site
   if (!comps.length && has(root, 'index.html')) {
     const c = mk(root, root, 'static-web', 'medium', ['index.html']); c.languages.push('HTML'); c.roles.push('web-app'); comps.push(c);

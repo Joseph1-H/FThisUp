@@ -1,18 +1,22 @@
 {
   "name": "fthisup",
-  "version": "0.1.0",
-  "description": "Your AI built it. Now let another AI try to destroy it. A local, real-execution application breaker for AI-built web apps.",
+  "version": "0.2.0",
+  "description": "Your code works? Prove it. An AI-assisted tool that attempts to break web apps, APIs, CLIs and libraries with real execution, then reports only what really failed.",
   "keywords": [
     "testing",
     "qa",
+    "fuzzing",
+    "chaos-testing",
     "playwright",
+    "api-testing",
+    "cli-testing",
+    "e2e",
     "ai",
     "agent-skills",
     "claude-code",
     "codex",
     "cursor",
-    "chaos-testing",
-    "e2e"
+    "monorepo"
   ],
   "license": "MIT",
   "type": "module",
@@ -39,7 +43,9 @@
     "test:unit": "vitest run tests/unit",
     "test:e2e": "vitest run tests/integration",
     "prepublishOnly": "npm test",
-    "prepare": "npm run build"
+    "prepare": "npm run build",
+    "lint": "eslint src tests/unit tests/integration tests/helpers.ts",
+    "check": "npm run typecheck && npm run lint && npm test"
   },
   "dependencies": {
     "commander": "^12.1.0",
@@ -48,8 +54,11 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.5",
     "@types/node": "^22.10.0",
+    "eslint": "^9.39.5",
     "typescript": "^5.7.0",
+    "typescript-eslint": "^8.73.0",
     "vitest": "^2.1.8"
   },
   "repository": {

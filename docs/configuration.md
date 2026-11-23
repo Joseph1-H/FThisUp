@@ -50,6 +50,37 @@
 | `safety.*` | See [safety.md](safety.md). |
 | `auth.*` | Enables authentication scenarios. Credentials come **only** from the environment variables named by `usernameEnv`/`passwordEnv`; they are never read from the config file and are scrubbed from all output. |
 
+## Universal options (v0.2)
+
+```json
+{
+  "autoDetect": true,
+  "adapters": { "web": true, "api": true, "cli": true, "python": true, "javascript": true, "flutter": true, "desktop": false, "godot": true },
+  "report": { "html": true, "json": true },
+  "timeoutMs": 30000,
+  "api": { "url": "http://localhost:8000", "spec": "openapi.json", "maxEndpoints": 40, "concurrency": 3,
+           "auth": { "tokenEnv": "FTHISUP_API_TOKEN", "header": "Authorization", "scheme": "Bearer", "protectedPaths": ["/admin/*"] } },
+  "cli": { "commands": [ { "name": "mytool", "command": ["node", "bin/mytool.js"] } ] },
+  "desktop": { "build": ["cargo", "build"], "run": ["target/debug/myapp"], "startupSeconds": 8, "display": "auto" },
+  "fuzz": { "enabled": true, "maxCallsPerFunction": 60, "maxFunctions": 25, "perCallTimeoutMs": 4000 },
+  "safety": { "sandbox": "auto", "allowUnsandboxedFuzzing": false }
+}
+```
+
+| Key | Meaning |
+|---|---|
+| `autoDetect` | Pick adapters automatically (default). With `false`, only adapters set to `true` run. |
+| `adapters.<id>` | `false` = never run, `true` = don't skip (opt-in adapters such as `desktop` need this or `--adapter`/`--all`). **Never implies the adapter's prerequisites exist**: unavailable adapters are reported as such. Ids: `web api cli python javascript flutter rust go java cpp swift desktop godot`. |
+| `report` | `"html"`/`"json"`/`"none"`, or `{ "html": bool, "json": bool }`. `results.json` is always written. |
+| `timeoutMs` | Alias of `timeout`. |
+| `api.url` | API base URL (default: `--url`). `api.spec` points to an OpenAPI 3/Swagger 2 file inside the project (JSON or YAML); otherwise `openapi.json|yaml` is searched for, then `/openapi.json` on the running API, then route definitions in source. `api.auth.protectedPaths` must reject anonymous access; the test token comes only from `$tokenEnv`. |
+| `cli.commands` | Explicit CLI targets (argv arrays, never shell strings). Auto-detected: `package.json` `bin`, Python `__main__.py`/argparse `main.py`, existing cargo debug builds. |
+| `desktop` | Build and run argv for the opt-in desktop adapter; `display`: `auto` (xvfb if installed, else `$DISPLAY`), `xvfb`, `none`. |
+| `fuzz` | Bounds for function-level fuzzing (calls per function, functions per module, per-call timeout). |
+| `safety.sandbox` | `auto` / `require` / `off` (see safety.md). |
+
+CLI flags added in v0.2: `--adapter <ids...>`, `--all`, `--api-url <url>`.
+
 ## Exit codes
 
 | Code | Meaning |
@@ -57,5 +88,5 @@
 | 0 | Ran; no confirmed issues (or `--exit-zero`) |
 | 1 | Confirmed issues found |
 | 2 | Blocked by safety policy or invalid configuration/options |
-| 3 | Target application unreachable |
-| 4 | Environment problem (browser missing, unexpected error) |
+| 3 | Target unreachable, or nothing could be executed |
+| 4 | An explicitly requested adapter cannot run, or an environment problem (browser missing, unexpected error) |

@@ -1,5 +1,12 @@
 import type { Category, Confidence, Evidence, FailureType, Finding, FindingStatus, Severity, TestResult } from '../core/types.js';
-import { emptyEvidence } from './types.js';
+import path from 'node:path';
+import { emptyEvidence, type ProjectContext } from './types.js';
+
+/** The (deepest) component whose directory contains this file. */
+export function owningComponent(ctx: ProjectContext, file: string): string | undefined {
+  const rel = (path.isAbsolute(file) ? path.relative(ctx.root, file) : file).split(path.sep).join('/');
+  return [...ctx.manifest.components].sort((a, b) => b.path.length - a.path.length).find((c) => c.path === '.' || rel === c.path || rel.startsWith(`${c.path}/`))?.id;
+}
 
 export function tail(text: string, lines = 30, maxChars = 3000): string {
   const t = text.split('\n').slice(-lines).join('\n');

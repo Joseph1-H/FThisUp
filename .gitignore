@@ -1,5 +1,6 @@
 node_modules
 dist
 fthisup-results
+.fthisup-tmp
 *.tgz
 .DS_Store

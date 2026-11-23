@@ -8,6 +8,7 @@ FThisUp deliberately drives a browser against applications and sends unusual inp
 - **Scenario-injection**: any way for a scenario file (for example one proposed by an AI agent) to execute arbitrary JavaScript or shell commands, or to read files.
 - **Secret leakage**: credentials, tokens or `.env` contents ending up in results, reports or logs.
 - **Report XSS**: application-controlled text escaping the HTML report's escaping.
+- **Execution-layer escapes** (v0.2): any way to make FThisUp run a shell or a non-allow-listed executable, run code outside the project, leak environment secrets to a child process, let an agent-supplied scenario choose an executable or host, escape the bubblewrap sandbox it configures, or perform a request to a host that was not authorized (including a reachability probe).
 
 Not in scope: vulnerabilities in the applications FThisUp finds bugs in, or findings that depend on you pointing FThisUp at systems you are not authorized to test.
 

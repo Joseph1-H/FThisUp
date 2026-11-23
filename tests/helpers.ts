@@ -39,3 +39,25 @@ export function runCli(args: string[], opts: { cwd?: string; env?: NodeJS.Proces
     child.on('close', (code) => { clearTimeout(t); resolve({ code, stdout, stderr }); });
   });
 }
+
+/** Copy a fixture project into a fresh throwaway project directory. */
+export function copyFixture(name: string, extra: Record<string, string> = {}): string {
+  const proj = tmpDir();
+  fs.cpSync(path.join(ROOT, 'tests', 'fixtures', 'projects', name), proj, { recursive: true });
+  for (const [f, content] of Object.entries(extra)) { fs.mkdirSync(path.dirname(path.join(proj, f)), { recursive: true }); fs.writeFileSync(path.join(proj, f), content); }
+  return proj;
+}
+
+/** Start `<dir>/server.mjs` with its cwd INSIDE the project (so the project-scope ownership check passes). */
+export async function startServerIn(dir: string, env: NodeJS.ProcessEnv = {}): Promise<Fixture> {
+  const child: ChildProcess = spawn(process.execPath, [path.join(dir, 'server.mjs')], { cwd: dir, env: { ...process.env, PORT: '0', ...env }, stdio: ['ignore', 'pipe', 'inherit'] });
+  const port = await new Promise<number>((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error('server did not start')), 10000);
+    child.stdout!.on('data', (d) => { const m = /LISTENING (\d+)/.exec(String(d)); if (m) { clearTimeout(t); resolve(Number(m[1])); } });
+    child.on('exit', () => reject(new Error('server exited')));
+  });
+  const url = `http://127.0.0.1:${port}`;
+  return { url, port, stop: () => child.kill(), stats: async () => (await fetch(`${url}/__stats`)).json() as Promise<{ deleteCalls: number; posts: number; notes: number }> };
+}
+
+export function readJson<T = any>(...p: string[]): T { return JSON.parse(fs.readFileSync(path.join(...p), 'utf8')) as T; }

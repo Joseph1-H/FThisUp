@@ -13,7 +13,7 @@ import type { RunnerAdapterSpec } from './runners.js';
 type Lang = 'node' | 'python';
 const HARNESS = fileURLToPath(new URL('./harness/', import.meta.url));
 
-export interface Obs { fn: string; key: string; desc: string; edge: boolean; size: number; outcome: 'returned' | 'threw' | 'hang' | 'crash'; name?: string; message?: string }
+export interface Obs { fn: string; key: string; desc: string; edge: boolean; size: number; outcome: 'returned' | 'threw' | 'hang' | 'crash'; name?: string; message?: string; /** the PROJECT's own code recursed (not an engine-internal toString/JSON recursion) */ recursion?: boolean }
 export interface HarnessRun { obs: Obs[]; functions: string[]; skipped: Array<{ fn: string; reason: string }>; loadErrors: string[]; restarts: number; calls: number; sandboxed: boolean; command: string }
 
 export type Kind = 'crash' | 'hang' | 'resource' | 'boundary-error';
@@ -28,7 +28,8 @@ export function flagFor(lang: Lang, o: Obs): Flag | null {
   if (o.outcome !== 'threw') return null;
   const name = o.name ?? '';
   const msg = o.message ?? '';
-  if (name === 'RecursionError' || name === 'MemoryError' || (name === 'RangeError' && /call stack/i.test(msg))) return { kind: 'resource', hard: false, obs: o };
+  if (name === 'RecursionError' || (name === 'RangeError' && /call stack/i.test(msg))) return o.recursion ? { kind: 'resource', hard: false, obs: o } : null;
+  if (name === 'MemoryError') return o.edge ? { kind: 'resource', hard: false, obs: o } : null;
   if (!o.edge) return null;
   if (lang === 'python' && PY_BOUNDARY.has(name)) return { kind: 'boundary-error', hard: false, obs: o };
   if (lang === 'node' && name === 'RangeError' && /invalid (array|string) length|out of range/i.test(msg)) return { kind: 'boundary-error', hard: false, obs: o };
@@ -95,7 +96,7 @@ export async function runHarness(ctx: ProjectContext, lang: Lang, targets: strin
         else if (e.t === 'skip-fn') result.skipped.push({ fn: e.fn, reason: e.reason });
         else if (e.t === 'load-error') result.loadErrors.push(`${path.basename(String(e.module ?? targets[0]))}: ${e.name}: ${e.message}`);
         else if (e.t === 'start') lastStart = { fn: e.fn, key: e.key, desc: e.desc, edge: !!e.edge, size: e.size ?? 0, outcome: 'returned' };
-        else if (e.t === 'end') { const ls: Obs | null = lastStart; const same = !!ls && ls.key === e.key; result.calls++; result.obs.push({ fn: e.fn, key: e.key, desc: same ? ls!.desc : '', edge: same ? ls!.edge : false, size: same ? ls!.size : 0, outcome: e.outcome, name: e.name, message: e.message }); lastStart = null; }
+        else if (e.t === 'end') { const ls: Obs | null = lastStart; const same = !!ls && ls.key === e.key; result.calls++; result.obs.push({ fn: e.fn, key: e.key, desc: same ? ls!.desc : '', edge: same ? ls!.edge : false, size: same ? ls!.size : 0, outcome: e.outcome, name: e.name, message: e.message, recursion: !!e.recursion }); lastStart = null; }
         else if (e.t === 'done') done = true;
       }
       if (done && !lastStart) return result;
