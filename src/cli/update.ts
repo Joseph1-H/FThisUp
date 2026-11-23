@@ -42,8 +42,11 @@ export function updateCheckout(dir: string, opts: { checkOnly?: boolean } = {}):
   // Remote differs. Only fast-forward: if our HEAD is not an ancestor of the remote, we are ahead/diverged.
   const anc = git(dir, ['merge-base', '--is-ancestor', head.out, remote.out]);
   if (!anc.ok && !shallow) return { dir, state: 'skipped', from: here, message: 'this copy has local commits that are not on GitHub, so it was left alone' };
-  const there = pkgVersion(git(dir, ['show', 'FETCH_HEAD:package.json']).out) ?? here;
-  if (opts.checkOnly) return { dir, state: 'available', from: here, to: there, message: `update available: ${here} → ${there}` };
+  const there0 = pkgVersion(git(dir, ['show', 'FETCH_HEAD:package.json']).out) ?? here;
+  // Same version number but new commits: show the commit ids so the message is not "0.2.0 → 0.2.0".
+  const label = (v: string | undefined, sha: string) => (there0 === here ? `${v} (${sha.slice(0, 7)})` : `${v}`);
+  const fromL = label(here, head.out), there = there0 === here ? label(there0, remote.out) : there0;
+  if (opts.checkOnly) return { dir, state: 'available', from: here, to: there, message: `update available: ${fromL} → ${there}` };
   if (git(dir, ['status', '--porcelain', '--untracked-files=no']).out) return { dir, state: 'skipped', from: here, message: 'you have uncommitted changes here, so it was left alone' };
   // A depth-1 clone (the documented install) has no shared history to merge: it is a read-only mirror, so move it to the new commit.
   const merged = shallow ? git(dir, ['reset', '--hard', '--quiet', 'FETCH_HEAD']) : git(dir, ['merge', '--ff-only', '--quiet', 'FETCH_HEAD']);
@@ -61,7 +64,7 @@ export function updateCheckout(dir: string, opts: { checkOnly?: boolean } = {}):
     if (b.status !== 0) return { dir, state: 'error', from: here, to: there, message: `updated the files but "npm run build" failed: ${(b.stderr || b.stdout || '').trim().split('\n')[0]}` };
     notes.push('rebuilt');
   }
-  return { dir, state: 'updated', from: here, to: there, message: `updated ${here} → ${there}${notes.length ? ` (${notes.join(', ')})` : ''}` };
+  return { dir, state: 'updated', from: here, to: there, message: `updated ${fromL} → ${there}${notes.length ? ` (${notes.join(', ')})` : ''}` };
 }
 
 /** Where FThisUp copies live: the running install plus any skill clones the user has. Never any other directory. */
