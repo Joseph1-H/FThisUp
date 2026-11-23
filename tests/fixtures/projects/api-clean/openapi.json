@@ -1,0 +1,25 @@
+{
+  "openapi": "3.0.3",
+  "info": { "title": "Users API", "version": "1.0.0" },
+  "components": { "schemas": {
+    "User": { "type": "object", "required": ["id", "name"], "properties": { "id": { "type": "integer" }, "name": { "type": "string" }, "age": { "type": "integer" } } },
+    "NewUser": { "type": "object", "required": ["name"], "properties": { "name": { "type": "string" }, "age": { "type": "integer" } } },
+    "Health": { "type": "object", "required": ["status"], "properties": { "status": { "type": "string" } } }
+  } },
+  "paths": {
+    "/health": { "get": { "summary": "Liveness", "responses": { "200": { "description": "ok", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Health" } } } } } } },
+    "/users": {
+      "get": { "summary": "List users", "responses": { "200": { "description": "ok", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/User" } } } } } } },
+      "post": { "summary": "Create a note-taker", "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/NewUser" } } } },
+        "responses": { "201": { "description": "created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/User" } } } }, "400": { "description": "invalid" } } }
+    },
+    "/users/{id}": {
+      "parameters": [ { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } } ],
+      "get": { "summary": "Get one user", "responses": { "200": { "description": "ok", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/User" } } } }, "400": { "description": "bad id" }, "404": { "description": "missing" } } },
+      "delete": { "summary": "Delete a user", "responses": { "204": { "description": "deleted" } } }
+    },
+    "/search": { "get": { "summary": "Search", "parameters": [ { "name": "q", "in": "query", "required": true, "schema": { "type": "string" } } ],
+      "responses": { "200": { "description": "ok", "content": { "application/json": { "schema": { "type": "object", "required": ["results"], "properties": { "results": { "type": "array", "items": { "type": "string" } } } } } } }, "400": { "description": "missing q" } } } },
+    "/admin/stats": { "get": { "summary": "Admin stats", "security": [ { "bearer": [] } ], "responses": { "200": { "description": "ok", "content": { "application/json": { "schema": { "type": "object", "required": ["users"], "properties": { "users": { "type": "integer" } } } } } }, "401": { "description": "unauthorized" } } } }
+  }
+}

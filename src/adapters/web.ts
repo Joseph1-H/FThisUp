@@ -11,14 +11,14 @@ function chromiumInstalled(ctx: ProjectContext): boolean {
   try { const e = chromium.executablePath(); return !!e && fs.existsSync(e); } catch { return false; }
 }
 
-async function rootIsHtml(url: string): Promise<boolean> {
+async function rootKind(url: string): Promise<'html' | 'other' | 'unreachable'> {
   try {
     const ctl = new AbortController();
     const t = setTimeout(() => ctl.abort(), 4000);
     const r = await fetch(url, { signal: ctl.signal, redirect: 'manual', headers: { accept: 'text/html' } });
     clearTimeout(t);
-    return /text\/html/i.test(r.headers.get('content-type') ?? '');
-  } catch { return false; }
+    return /text\/html/i.test(r.headers.get('content-type') ?? '') || (r.status >= 300 && r.status < 400) ? 'html' : 'other';
+  } catch { return 'unreachable'; }
 }
 
 const webComponent = (ctx: ProjectContext) => ctx.manifest.components.find((c) => c.roles.includes('web-app')) ?? ctx.manifest.components[0];
@@ -38,10 +38,11 @@ export const webAdapter: TestAdapter = {
     if (!ctx.target.url) {
       return { applicable: comp.length > 0, confidence: comp.length ? 'medium' : 'low', components: ids, reason: comp.length ? 'web app detected in the project, but no running server was found' : 'no web app detected and no running server found' };
     }
-    if (ctx.target.source === 'cli') return { applicable: true, confidence: 'high', components: ids, reason: 'target URL supplied with --url' };
     if (comp.length) return { applicable: true, confidence: 'high', components: ids, reason: 'web framework detected and a server is running' };
-    const html = await rootIsHtml(ctx.target.url);
-    return { applicable: html, confidence: html ? 'medium' : 'low', components: ids, reason: html ? 'the running server serves HTML at /' : 'the running server does not serve HTML at / (looks like an API; see the api adapter)' };
+    const kind = await rootKind(ctx.target.url);
+    // an explicit --url that cannot be reached stays applicable so the user gets the familiar "could not reach" error
+    if (ctx.target.source === 'cli' && kind !== 'other') return { applicable: true, confidence: 'high', components: ids, reason: 'target URL supplied with --url' };
+    return { applicable: kind === 'html', confidence: kind === 'html' ? 'medium' : 'low', components: ids, reason: kind === 'html' ? 'the running server serves HTML at /' : 'the running server does not serve HTML at / (looks like an API; see the api adapter)' };
   },
 
   async capabilities(ctx): Promise<Capability[]> {

@@ -272,7 +272,8 @@ export const cliAdapter: TestAdapter = {
         continue;
       }
       const helpText = `${helpRun.out.stdout}\n${helpRun.out.stderr}`;
-      const sens = classifySensitivity(t.name, helpText.slice(0, 4000));
+      // classify by name and by destructive FLAGS only (help prose like "show this help message" is far too noisy)
+      const sens = classifySensitivity(t.name) ?? (/--(delete|remove|destroy|purge|wipe|drop|truncate|uninstall)\b/i.test(helpText) ? ('deletion' as const) : undefined);
       const specs: Spec[] = [...baseScenarios(), ...helpDerived(helpText)];
       for (const a of agent.filter((x) => x.target === t.name)) specs.unshift({ id: a.id, name: `${a.name} (agent)`, argv: a.argv, stdin: a.stdin, signal: a.signal, timeoutMs: a.timeoutMs, expect: a.expect.map((e) => ({ ...e, hard: ['noCrash', 'noStackTrace', 'terminates'].includes(e.type) })), risk: a.risk, requiresApproval: a.requiresApproval, sensitivity: a.sensitivity, origin: 'agent', description: a.description });
       for (const sc of specs) {
