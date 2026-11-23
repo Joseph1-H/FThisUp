@@ -12,7 +12,7 @@ There is no universal slash command: `/fthisup` is a Claude Code feature (and wo
 
 ## Install
 
-FThisUp is installed from GitHub, not npm. Either `git clone https://github.com/Joseph1-H/FThisUp && cd FThisUp && npm install && npm link`, or use `npx --yes github:Joseph1-H/FThisUp` in place of `fthisup` below:
+FThisUp is installed from GitHub, not npm. Install it with `npm install -g git+https://github.com/Joseph1-H/FThisUp.git` (prebuilt, no compiler needed), or use `npx --yes git+https://github.com/Joseph1-H/FThisUp.git` in place of `fthisup` below:
 
 ```bash
 fthisup install-skill --agent claude            # ./.claude/skills/fthisup

@@ -47,6 +47,9 @@ export function updateCheckout(dir: string, opts: { checkOnly?: boolean } = {}):
   const label = (v: string | undefined, sha: string) => (there0 === here ? `${v} (${sha.slice(0, 7)})` : `${v}`);
   const fromL = label(here, head.out), there = there0 === here ? label(there0, remote.out) : there0;
   if (opts.checkOnly) return { dir, state: 'available', from: here, to: there, message: `update available: ${fromL} → ${there}` };
+  // dist/ is generated and committed (prebuilt for GitHub installs): local rebuilds of it are never "your changes".
+  const distTracked = git(dir, ['ls-files', '--error-unmatch', 'dist/cli/index.js']).ok;
+  if (distTracked) git(dir, ['checkout', '--quiet', '--', 'dist']);
   if (git(dir, ['status', '--porcelain', '--untracked-files=no']).out) return { dir, state: 'skipped', from: here, message: 'you have uncommitted changes here, so it was left alone' };
   // A depth-1 clone (the documented install) has no shared history to merge: it is a read-only mirror, so move it to the new commit.
   const merged = shallow ? git(dir, ['reset', '--hard', '--quiet', 'FETCH_HEAD']) : git(dir, ['merge', '--ff-only', '--quiet', 'FETCH_HEAD']);
@@ -59,9 +62,9 @@ export function updateCheckout(dir: string, opts: { checkOnly?: boolean } = {}):
     if (i.status !== 0) return { dir, state: 'error', from: here, to: there, message: `updated the files but "npm install" failed: ${(i.stderr || '').trim().split('\n')[0]}` };
     notes.push('dependencies refreshed');
   }
-  if (fs.existsSync(path.join(dir, 'dist'))) {
-    const b = spawnSync(npm, ['run', 'build', '--silent'], { cwd: dir, encoding: 'utf8', timeout: 600_000, shell: sh });
-    if (b.status !== 0) return { dir, state: 'error', from: here, to: there, message: `updated the files but "npm run build" failed: ${(b.stderr || b.stdout || '').trim().split('\n')[0]}` };
+  if (!distTracked && fs.existsSync(path.join(dir, 'dist'))) {
+    const b = spawnSync(npm, ['run', 'compile', '--silent'], { cwd: dir, encoding: 'utf8', timeout: 600_000, shell: sh });
+    if (b.status !== 0) return { dir, state: 'error', from: here, to: there, message: `updated the files but "npm run compile" failed: ${(b.stderr || b.stdout || '').trim().split('\n')[0]}` };
     notes.push('rebuilt');
   }
   return { dir, state: 'updated', from: here, to: there, message: `updated ${fromL} → ${there}${notes.length ? ` (${notes.join(', ')})` : ''}` };
@@ -87,3 +90,36 @@ export function findInstalls(opts: { selfRoot: string; cwd: string; home?: strin
 }
 
 export function selfRoot(): string { return path.resolve(fileURLToPath(new URL('../../', import.meta.url))); }
+
+export const INSTALL_SPEC = 'git+https://github.com/Joseph1-H/FThisUp.git';
+
+/** Is this a copy that `npm install -g <git url>` put in a global node_modules (and not a throwaway npx cache)? */
+export function isGlobalNpmInstall(root: string): boolean {
+  const p = root.split(path.sep);
+  return p[p.length - 2] === 'node_modules' && p[p.length - 1] === 'fthisup' && !p.includes('_npx');
+}
+
+function newer(a: string, b: string): boolean {
+  const n = (v: string) => v.split('-')[0]!.split('.').map((x) => parseInt(x, 10) || 0);
+  const [x, y] = [n(a), n(b)];
+  for (let i = 0; i < 3; i++) if ((x[i] ?? 0) !== (y[i] ?? 0)) return (x[i] ?? 0) > (y[i] ?? 0);
+  return false;
+}
+
+/** Update an `npm install -g` copy: compare with the version on GitHub, then reinstall from GitHub. */
+export async function updateGlobalInstall(root: string, opts: { checkOnly?: boolean } = {}): Promise<UpdateOutcome> {
+  const here = pkgVersion(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
+  let there: string | undefined;
+  try {
+    const res = await fetch('https://raw.githubusercontent.com/Joseph1-H/FThisUp/main/package.json', { signal: AbortSignal.timeout(20_000) });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    there = pkgVersion(await res.text());
+  } catch (e) { return { dir: root, state: 'error', from: here, message: `could not reach GitHub: ${(e as Error).message}` }; }
+  if (!there || !here) return { dir: root, state: 'error', from: here, message: 'could not read the version number' };
+  if (!newer(there, here)) return { dir: root, state: 'up-to-date', from: here, to: here, message: `already on the latest version (${here})` };
+  if (opts.checkOnly) return { dir: root, state: 'available', from: here, to: there, message: `update available: ${here} → ${there}` };
+  const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+  const r = spawnSync(npm, ['install', '-g', INSTALL_SPEC], { encoding: 'utf8', timeout: 600_000, shell: process.platform === 'win32' });
+  if (r.status !== 0) return { dir: root, state: 'error', from: here, to: there, message: `"npm install -g ${INSTALL_SPEC}" failed: ${(r.stderr || '').trim().split('\n').find((l) => /error/i.test(l)) ?? 'see npm output'}` };
+  return { dir: root, state: 'updated', from: here, to: there, message: `updated ${here} → ${there} (reinstalled from GitHub)` };
+}

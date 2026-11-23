@@ -25,6 +25,9 @@ jobs:
       - run: npm run typecheck
       - run: npm run lint
       - run: npm test
+      - name: Committed dist/ must match the source (GitHub installs ship it prebuilt)
+        if: matrix.os == 'ubuntu-latest' && matrix.node == 22
+        run: git diff --exit-code -- dist SKILL.md references
       - name: Verify the package contents
         if: matrix.os == 'ubuntu-latest' && matrix.node == 22
         run: npm pack --dry-run

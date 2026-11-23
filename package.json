@@ -37,13 +37,13 @@
     "node": ">=20"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json && node scripts/postbuild.mjs && node scripts/sync-skill.mjs",
+    "compile": "tsc -p tsconfig.build.json && node scripts/postbuild.mjs && node scripts/sync-skill.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "npm run build && vitest run",
+    "test": "npm run compile && vitest run",
     "test:unit": "vitest run tests/unit",
     "test:e2e": "vitest run tests/integration",
+    "check:dist": "npm run compile && git diff --exit-code -- dist SKILL.md references",
     "prepublishOnly": "npm test",
-    "prepare": "npm run build",
     "lint": "eslint src tests/unit tests/integration tests/helpers.ts",
     "check": "npm run typecheck && npm run lint && npm test"
   },
