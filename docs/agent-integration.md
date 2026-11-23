@@ -12,21 +12,19 @@ There is no universal slash command: `/fthisup` is a Claude Code feature (and wo
 
 ## Install
 
-From a project that has FThisUp available (`npx fthisup` works without installing it):
+FThisUp is installed from GitHub, not npm. Either `git clone https://github.com/Joseph1-H/FThisUp && cd FThisUp && npm install && npm link`, or use `npx --yes github:Joseph1-H/FThisUp` in place of `fthisup` below:
 
 ```bash
-npx fthisup install-skill --agent claude            # ./.claude/skills/fthisup
-npx fthisup install-skill --agent claude --global   # ~/.claude/skills/fthisup
-npx fthisup install-skill --agent codex             # ./.agents/skills/fthisup
-npx fthisup install-skill --agent cursor            # ./.cursor/skills/fthisup
+fthisup install-skill --agent claude            # ./.claude/skills/fthisup
+fthisup install-skill --agent claude --global   # ~/.claude/skills/fthisup
+fthisup install-skill --agent codex             # ./.agents/skills/fthisup
+fthisup install-skill --agent cursor            # ./.cursor/skills/fthisup
 ```
 
 Manual copy works too, because a skill is just a folder:
 
 ```bash
-npm i -D fthisup
-mkdir -p .claude/skills && cp -r node_modules/fthisup/skills/fthisup .claude/skills/
-# PowerShell: Copy-Item -Recurse node_modules\fthisup\skills\fthisup .claude\skills\
+git clone --depth 1 https://github.com/Joseph1-H/FThisUp ~/.claude/skills/fthisup   # the repo root is a valid skill folder
 ```
 
 Restart the agent session if the skill does not show up.

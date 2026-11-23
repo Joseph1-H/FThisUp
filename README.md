@@ -6,10 +6,17 @@ An open-source AI-assisted software testing tool that attempts to break your app
 
 FThisUp reads your repository, works out what it contains (a web app, an HTTP API, a CLI, a Python/JS/Rust/Flutter/C++ library, a desktop app, a Godot game, or several of these in one monorepo), picks the testing adapters that actually apply, and **executes real tests**: your project's own test suites plus aggressive but bounded adversarial checks (hostile input, malformed requests, crashes, hangs, double submits, dead APIs, auth gaps). Every failure is re-run to confirm it, and every confirmed bug comes with evidence and repro steps. The engine is deterministic and needs no LLM, API key, account or telemetry; AI coding agents can drive it through a bundled skill but can never invent results.
 
+FThisUp is installed from GitHub (it is intentionally **not** published to npm):
+
 ```bash
-npm install && npx playwright install chromium    # once (the browser is only needed for web apps)
-npx fthisup                                       # detect, plan, test, report
+git clone https://github.com/Joseph1-H/FThisUp.git && cd FThisUp
+npm install && npm link                  # builds it and puts `fthisup` on your PATH
+npx playwright install chromium          # once (the browser is only needed for web apps)
+
+cd /path/to/your/project && fthisup      # detect, plan, test, report
 ```
+
+No clone needed for a one-off run: `npx --yes github:Joseph1-H/FThisUp test` (builds on first use).
 
 `/fthisup` inside Claude Code, Codex or Cursor does the same through the [agent skill](#agent-integration).
 
@@ -105,17 +112,19 @@ Details per adapter, prerequisites and verification status: [docs/adapters.md](d
 
 ## Commands
 
+(`fthisup` below means the linked command, or `npx --yes github:Joseph1-H/FThisUp`.)
+
 ```text
-npx fthisup                       # = test: detect → plan → execute → report
-npx fthisup scan                  # components, languages, frameworks, test commands + availability; web discovery
-npx fthisup test [options]        # run the applicable adapters
-npx fthisup test --adapter api,cli --url http://localhost:8000
-npx fthisup test --all            # also opt-in adapters (desktop builds and launches your app)
-npx fthisup test --dry-run        # show the plan and validate agent scenarios; executes nothing
-npx fthisup report                # regenerate report.html from results.json
-npx fthisup doctor                # which adapters can run right now, and what each missing prerequisite needs
-npx fthisup init                  # write fthisup.config.json
-npx fthisup install-skill         # copy the agent skill into Claude Code / Codex / Cursor
+fthisup                       # = test: detect → plan → execute → report
+fthisup scan                  # components, languages, frameworks, test commands + availability; web discovery
+fthisup test [options]        # run the applicable adapters
+fthisup test --adapter api,cli --url http://localhost:8000
+fthisup test --all            # also opt-in adapters (desktop builds and launches your app)
+fthisup test --dry-run        # show the plan and validate agent scenarios; executes nothing
+fthisup report                # regenerate report.html from results.json
+fthisup doctor                # which adapters can run right now, and what each missing prerequisite needs
+fthisup init                  # write fthisup.config.json
+fthisup install-skill         # copy the agent skill into Claude Code / Codex / Cursor
 ```
 
 Options: `--url` `--api-url` `--adapter <ids...>` `--all` `--mode safe|thorough` `--max-tests` `--timeout` `--report` `--output` `--config` `--scenarios` `--start` `--no-static` `--exit-zero`. Exit codes: 0 ok · 1 confirmed issues · 2 blocked by safety/config · 3 target unreachable or nothing could run · 4 an explicitly requested adapter cannot run / environment problem. See [docs/configuration.md](docs/configuration.md).
@@ -131,9 +140,9 @@ Options: `--url` `--api-url` `--adapter <ids...>` `--all` `--mode safe|thorough`
 
 | Agent | Install | Invoke |
 |---|---|---|
-| Claude Code | `git clone --depth 1 https://github.com/Joseph1-H/FThisUp ~/.claude/skills/fthisup` or `npx fthisup install-skill` | `/fthisup`, `/fthisup fix` |
-| OpenAI Codex | `npx fthisup install-skill --agent codex` (`.agents/skills`) | `$fthisup` or `/skills` |
-| Cursor | `npx fthisup install-skill --agent cursor` (`.cursor/skills`) | `/` picker → `fthisup` |
+| Claude Code | `git clone --depth 1 https://github.com/Joseph1-H/FThisUp ~/.claude/skills/fthisup` or `fthisup install-skill` | `/fthisup`, `/fthisup fix` |
+| OpenAI Codex | `fthisup install-skill --agent codex` (`.agents/skills`) | `$fthisup` or `/skills` |
+| Cursor | `fthisup install-skill --agent cursor` (`.cursor/skills`) | `/` picker → `fthisup` |
 
 The skill makes the agent run the real CLI, read `results.json` and summarize; it never fabricates outcomes. `/fthisup fix` is a separate, permission-gated workflow (inspect confirmed findings → propose → edit only with your approval → run your tests → re-run FThisUp → report per bug whether it is really resolved). Agents can add scenarios (`cliScenarios`, `apiScenarios`, web `scenarios`) in a strict typed format that is validated before anything runs. [docs/agent-integration.md](docs/agent-integration.md)
 
