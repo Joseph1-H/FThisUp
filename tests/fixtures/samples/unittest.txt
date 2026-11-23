@@ -1,0 +1,29 @@
+test_add (test_calc.TestCalc.test_add) ... FAIL
+test_div (test_calc.TestCalc.test_div) ... ok
+test_div_zero (test_calc.TestCalc.test_div_zero) ... ERROR
+test_first_word (test_calc.TestCalc.test_first_word) ... ok
+
+======================================================================
+ERROR: test_div_zero (test_calc.TestCalc.test_div_zero)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/work/py-buggy/test_calc.py", line 13, in test_div_zero
+    safe_div(1, 0)
+  File "/work/py-buggy/calc.py", line 5, in safe_div
+    return a / b   # BUG: no zero check -> ZeroDivisionError
+           ~~^~~
+ZeroDivisionError: division by zero
+
+======================================================================
+FAIL: test_add (test_calc.TestCalc.test_add)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/work/py-buggy/test_calc.py", line 6, in test_add
+    self.assertEqual(add(2, 3), 5)
+AssertionError: -1 != 5
+
+----------------------------------------------------------------------
+Ran 4 tests in 0.001s
+
+FAILED (failures=1, errors=1)
+exit 1

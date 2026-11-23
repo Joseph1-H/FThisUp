@@ -30,11 +30,19 @@ export const CATEGORY_LABEL: Record<string, string> = {
   'network-failure': 'Network error handling',
   authentication: 'Authentication',
   'code-analysis': 'Code analysis',
+  api: 'API',
+  cli: 'Command line',
+  'unit-tests': 'Project tests',
+  fuzzing: 'Adversarial inputs',
+  build: 'Build',
+  startup: 'Startup',
+  'static-analysis': 'Static analysis',
+  'project-validation': 'Project validation',
 };
 
 export function progressLine(i: number, total: number, name: string, outcome: string) {
   if (!process.stdout.isTTY) return;
-  const msg = `   ${c.gray(`[${i}/${total}]`)} ${outcome === 'failed' ? c.red('✖') : outcome === 'passed' ? c.green('✔') : c.yellow('•')} ${name}`;
+  const msg = `   ${c.gray(total ? `[${i}/${total}]` : `[${i}]`)} ${outcome === 'failed' ? c.red('✖') : outcome === 'passed' ? c.green('✔') : c.yellow('•')} ${name}`;
   process.stdout.write(`\r\u001b[2K${msg.slice(0, Math.max(40, (process.stdout.columns ?? 100) + 20))}`);
 }
 export function clearProgress() {

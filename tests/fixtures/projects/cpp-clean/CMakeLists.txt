@@ -1,0 +1,7 @@
+cmake_minimum_required(VERSION 3.10)
+project(cpp_clean C)
+enable_testing()
+add_executable(t_ok t_ok.c)
+add_executable(t_bug t_bug.c)
+add_test(NAME ok_test COMMAND t_ok)
+add_test(NAME bug_test COMMAND t_bug)

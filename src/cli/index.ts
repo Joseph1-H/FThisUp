@@ -8,14 +8,16 @@ import { Command } from 'commander';
 import { chromium } from 'playwright';
 import { loadConfig, ConfigError, CONFIG_FILE, configSchema, type FThisUpConfig } from '../core/config.js';
 import { BrowserMissingError, SafetyEnforcementError, TargetBlockedError, TargetUnreachableError } from '../core/errors.js';
-import { launchBrowser, probeUrl, runTests } from '../core/runner.js';
+import { launchBrowser, probeUrl } from '../core/runner.js';
+import { orchestrate, UnknownAdapterError, type PlannedRun } from '../core/orchestrator.js';
+import { detectProjectManifest } from '../detect/manifest.js';
 import { startApp, type RunningApp } from '../core/app.js';
 import { discoverProject } from '../discovery/project.js';
 import { discoverLive } from '../discovery/live.js';
 import { analyzeStatic } from '../analysis/static.js';
 import { evaluateTarget, SafetyGuard } from '../safety/policy.js';
 import { writeReport } from '../reporting/html.js';
-import { readResults, writeManifest, writeResultsJson } from '../reporting/json.js';
+import { readResults, writeJsonFile, writeManifest, writeResultsJson } from '../reporting/json.js';
 import type { Manifest } from '../discovery/types.js';
 import { detectLocalUrl } from '../utils/ports.js';
 import { confine, findProjectRoot, ProjectScopeError } from '../utils/project-root.js';
@@ -27,7 +29,7 @@ const EXIT = { OK: 0, BUGS: 1, BLOCKED: 2, UNREACHABLE: 3, ENV: 4 } as const;
 
 interface TestOpts {
   url?: string; mode?: string; headless?: boolean; maxTests?: string; timeout?: string; report?: string; output?: string;
-  config?: string; scenarios?: string; dryRun?: boolean; start?: boolean; static?: boolean; exitZero?: boolean; quiet?: boolean;
+  config?: string; scenarios?: string; adapter?: string[]; all?: boolean; apiUrl?: string; dryRun?: boolean; start?: boolean; static?: boolean; exitZero?: boolean; quiet?: boolean;
 }
 
 function applyOverrides(base: FThisUpConfig, o: TestOpts): FThisUpConfig {
@@ -74,6 +76,7 @@ function assertOwnTarget(url: string, root: string, source: 'cli' | 'config' | '
 }
 
 function handleKnown(e: unknown): never {
+  if (e instanceof UnknownAdapterError) fail(EXIT.BLOCKED, c.red(`\n   ${e.message}`));
   if (e instanceof ProjectScopeError) fail(EXIT.BLOCKED, c.red(`\n   ${e.message}`));
   if (e instanceof ConfigError) fail(EXIT.BLOCKED, c.red(`Configuration error: ${e.message}`));
   if (e instanceof TargetBlockedError) {
@@ -105,11 +108,12 @@ async function testCommand(o: TestOpts) {
     scoped(cwd, config.output, 'output directory');
     const quiet = !!o.quiet;
     if (!quiet) printBanner();
+    const adapters = (o.adapter ?? []).flatMap((a) => a.split(',')).map((a) => a.trim()).filter(Boolean);
 
     let app: RunningApp | undefined;
-    let url = await resolveUrl(cwd, config, o.url);
-    if (url) assertOwnTarget(url, cwd, o.url ? 'cli' : config.url ? 'config' : 'auto');
+    if (o.url) assertOwnTarget(o.url, cwd, 'cli');
     if (o.start) {
+      const url = o.url ?? config.url;
       if (!config.startCommand) fail(EXIT.BLOCKED, c.red('   --start needs "startCommand" in fthisup.config.json.'));
       if (!url) fail(EXIT.UNREACHABLE, c.red('   --start needs a target URL (--url or "url" in the config).'));
       const d = evaluateTarget(url, config);
@@ -117,33 +121,45 @@ async function testCommand(o: TestOpts) {
       console.log(`   Starting app: ${c.dim(config.startCommand)}`);
       app = await startApp(config.startCommand, cwd, url);
     }
-    if (!url) {
-      fail(EXIT.UNREACHABLE, c.red('   No running application found on common local ports.'), '   Start your dev server and re-run, or pass --url http://localhost:PORT.');
-    }
-    if (!quiet) console.log(`   Target: ${c.cyan(url)}\n`);
     process.on('SIGINT', () => { app?.stop(); process.exit(130); });
 
     let lastStage = '';
+    let done = 0;
+    let planned: PlannedRun | undefined;
     try {
-      const { results, manifest, plan } = await runTests({
-        cwd, config, url, scenariosFile: o.scenarios, dryRun: o.dryRun, skipStatic: o.static === false,
-        onStage: (s) => { if (!quiet && s !== lastStage) { lastStage = s; console.log(`   ${s}`); } },
-        onProgress: (p) => { if (!quiet) progressLine(p.index, p.total, p.result.name, p.result.outcome); },
+      const orch = await orchestrate({
+        root: cwd, config, explicitUrl: o.url, apiUrl: o.apiUrl, adapters, all: o.all, scenariosFile: o.scenarios, dryRun: o.dryRun, skipStatic: o.static === false,
+        onStage: (s) => { if (!quiet && s !== lastStage && /^(Discovering|Generating|Attempting)/.test(s)) { lastStage = s; console.log(`   ${s}`); } },
+        onPlan: (p) => { planned = p; if (!quiet) printPlan(p); },
+        onProgress: (_a, r) => { if (!quiet) progressLine(++done, 0, `${r.adapter ?? ''} ${r.name}`.trim(), r.outcome); },
       });
       clearProgress();
+      const { results, planned: pl } = orch;
       if (o.dryRun) {
-        console.log(`\n   Dry run: ${plan.scenarios.length} scenario(s) would run (${plan.droppedByCap} dropped by --max-tests).`);
-        for (const s of plan.scenarios) console.log(`   ${c.gray(s.category.padEnd(16))} ${s.id}${s.requiresApproval ? c.yellow('  [needs approval]') : ''}`);
-        for (const r of plan.rejected) console.log(`   ${c.red('[REJECTED]')} ${r.id ?? `#${r.index}`}: ${r.errors.join('; ')}`);
+        const tests = pl.selections.flatMap((s) => (s.plan?.tests ?? []).map((t) => ({ ...t, adapter: s.adapter.id })));
+        const dropped = pl.selections.reduce((n, s) => n + (s.plan?.droppedByCap ?? 0), 0);
+        console.log(`\n   Dry run: ${tests.length} scenario(s) would run (${dropped} dropped by --max-tests).`);
+        for (const t of tests) console.log(`   ${c.gray(`${t.adapter}/${t.category}`.padEnd(26))} ${t.id}${t.requiresApproval ? c.yellow('  [needs approval]') : ''}`);
+        for (const s of pl.selections) {
+          const rej = (s.plan?.state as { rejected?: Array<{ id?: string; index: number; errors: string[] }> } | undefined)?.rejected ?? [];
+          for (const r of rej) console.log(`   ${c.red('[REJECTED]')} ${r.id ?? `#${r.index}`}: ${r.errors.join('; ')}`);
+        }
         return;
       }
       const outDir = path.resolve(cwd, config.output);
       const jsonFile = writeResultsJson(outDir, results);
-      writeManifest(outDir, manifest);
+      for (const [name, data] of Object.entries(orch.artifacts)) if (name.endsWith('.json')) writeJsonFile(outDir, name, data);
+      writeJsonFile(outDir, 'project.json', planned?.ctx.manifest ?? {});
       let reportFile: string | undefined;
       if (config.report === 'html') reportFile = writeReport(outDir, results);
-      printSummary(results, reportFile ?? jsonFile, plan.rejected.length);
-      process.exitCode = results.summary.confirmed > 0 && !o.exitZero ? EXIT.BUGS : EXIT.OK;
+      printSummary(results, reportFile ?? jsonFile, Number(orch.artifacts['rejected-scenarios'] ?? 0), orch.blocked);
+      const problems = orch.explicitProblems;
+      if (problems.length) {
+        for (const p of problems) console.error(c.red(`   Adapter "${p.id}" could not run: ${p.reason}`));
+        process.exitCode = EXIT.ENV;
+      } else if (orch.blocked.length && results.summary.total === 0 && o.url) process.exitCode = EXIT.BLOCKED;
+      else if (results.summary.total === 0 && results.summary.blocked === 0 && !results.adapters?.some((a) => a.status === 'ran')) process.exitCode = EXIT.UNREACHABLE;
+      else process.exitCode = results.summary.confirmed > 0 && !o.exitZero ? EXIT.BUGS : EXIT.OK;
     } finally {
       app?.stop();
     }
@@ -152,7 +168,29 @@ async function testCommand(o: TestOpts) {
   }
 }
 
-function printSummary(results: import('../core/types.js').RunResults, reportPath: string, rejected: number) {
+function printPlan(p: PlannedRun) {
+  const m = p.ctx.manifest;
+  if (p.ctx.target.url) console.log(`   Target: ${c.cyan(p.ctx.target.url)}\n`);
+  console.log(`   ${c.bold('Project detected:')}`);
+  if (!m.components.length) console.log(`     ${c.gray('no recognizable project files')}`);
+  for (const comp of m.components) {
+    const what = [comp.frameworks.slice(0, 3).join(', '), comp.roles.join('+')].filter(Boolean).join(' · ');
+    console.log(`     ${comp.languages.join('/') || comp.ecosystem} ${c.gray(`(${what || 'unknown'}) @ ${comp.path}`)}${comp.integrations.length ? c.gray(` · ${comp.integrations.join(', ')}`) : ''}`);
+  }
+  console.log(`   ${c.bold('Testing:')}`);
+  for (const s of p.selections) {
+    if (s.status === 'not-applicable' && !s.explicit) continue;
+    const name = s.adapter.id.padEnd(11);
+    if (s.status === 'ran') console.log(`     ${c.green('✓')} ${name} ${s.adapter.name}`);
+    else {
+      console.log(`     ${c.yellow('-')} ${name} ${c.gray(`${s.status}: ${s.reason ?? ''}`)}`);
+      for (const mi of s.plan?.missing ?? []) if (mi.setup) console.log(`         ${c.gray('→ ' + mi.setup)}`);
+    }
+  }
+  console.log('');
+}
+
+function printSummary(results: import('../core/types.js').RunResults, reportPath: string, rejected: number, blocked: Array<{ id: string; reason: string }> = []) {
   const S = results.summary;
   console.log('');
   for (const [cat, v] of Object.entries(S.byCategory)) {
@@ -165,17 +203,23 @@ function printSummary(results: import('../core/types.js').RunResults, reportPath
   if (exec.length) console.log('');
   for (const f of exec) {
     const st = f.status === 'confirmed' ? c.red('CONFIRMED') : f.status === 'suspected' ? c.yellow('SUSPECTED') : c.gray('NOT-REPRODUCIBLE');
-    console.log(`   ${st} ${c.bold(f.severity.toUpperCase().padEnd(8))} ${f.title} ${c.gray(f.route)}`);
+    const where = f.component && (results.components?.length ?? 0) > 1 ? c.gray(` [${f.component}]`) : '';
+    console.log(`   ${st} ${c.bold(f.severity.toUpperCase().padEnd(8))} ${f.title} ${c.gray(f.route)}${where}`);
   }
   const warnings = issues.filter((f) => f.source === 'static-analysis').length;
   if (warnings) console.log(`\n   ${tag.warn()} ${warnings} static-analysis warning(s) (heuristic, unconfirmed) — see report`);
-  if (S.skipped || S.blocked) console.log(`   ${tag.skip()} ${[S.skipped && `${S.skipped} skipped (could not be evaluated)`, S.blocked && `${S.blocked} blocked by safety policy`].filter(Boolean).join(', ')}`);
+  if (S.skipped || S.blocked) console.log(`   ${tag.skip()} ${[S.skipped && `${S.skipped} skipped (not evaluable, or skipped by the project's own runner)`, S.blocked && `${S.blocked} blocked by safety policy`].filter(Boolean).join(', ')}`);
+  for (const a of results.adapters ?? []) {
+    if (['unavailable', 'unsupported', 'error', 'blocked'].includes(a.status)) console.log(`   ${tag.skip()} ${a.id}: ${a.status} — ${a.reason ?? ''}`);
+    else if (a.status === 'skipped') console.log(`   ${tag.skip()} ${a.id}: ${a.reason ?? 'skipped'}`);
+  }
+  for (const b of blocked) console.log(`   ${tag.fail()} ${b.id} blocked: ${b.reason}`);
   if (rejected) console.log(`   ${tag.warn()} ${rejected} supplied scenario(s) rejected by validation`);
   console.log('');
   const n = S.confirmed;
   console.log(n > 0 ? `   ${c.red(c.bold(`${n} confirmed issue${n === 1 ? '' : 's'} discovered.`))}${S.suspected ? ` ${S.suspected} more suspected.` : ''}`
     : S.total === 0 ? `   ${c.yellow('No scenario could be executed.')}`
-      : `   ${c.green('No confirmed issues in the checks that ran.')} ${c.gray('(That is not proof the app is bug-free.)')}`);
+      : `   ${c.green('No confirmed issues in the checks that ran.')} ${c.gray('(That is not proof the project is bug-free.)')}`);
   console.log(`   ${S.total} executed · ${S.passed} passed · ${S.failed} failed · ${((results.durationMs) / 1000).toFixed(1)}s`);
   console.log(`\n   Report: ${reportPath}\n`);
 }
@@ -193,6 +237,9 @@ const addTestOptions = (cmd: Command) => cmd
   .option('--report <format>', 'html | json | none (default html)')
   .option('--output <dir>', 'results directory (default ./fthisup-results)')
   .option('--config <file>', `config file (default ${CONFIG_FILE})`)
+  .option('--adapter <ids...>', 'only run these adapters (web, api, cli, python, javascript, flutter, rust, go, java, cpp, swift, desktop, godot)')
+  .option('--all', 'run every applicable adapter, including opt-in ones (desktop builds/launches your app)')
+  .option('--api-url <url>', 'base URL of the API under test (default: --url)')
   .option('--scenarios <file>', 'additional scenarios (JSON) proposed by an AI agent; validated before running')
   .option('--dry-run', 'discover + generate + validate scenarios, but do not execute them')
   .option('--start', 'start the app using "startCommand" from the config, and stop it afterwards')

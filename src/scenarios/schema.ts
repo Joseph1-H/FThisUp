@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { CATEGORIES } from '../core/types.js';
+import { WEB_CATEGORIES } from '../core/types.js';
 
 /**
  * The ONLY things a scenario can make the executor do. There is no "evaluate",
@@ -56,7 +56,7 @@ export type Expectation = z.infer<typeof expectationSchema>;
 export const scenarioSchema = o({
   id: z.string().regex(/^[a-z0-9][a-z0-9._:-]{0,120}$/i, 'id must be alphanumeric with . _ : -'),
   name: z.string().min(1).max(200),
-  category: z.enum(CATEGORIES),
+  category: z.enum(WEB_CATEGORIES),
   risk: z.enum(['low', 'medium', 'high']),
   target: relPath,
   steps: z.array(actionSchema).max(40),
