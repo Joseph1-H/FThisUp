@@ -59,8 +59,8 @@ export function updateCheckout(dir, opts = {}) {
     if (opts.checkOnly)
         return { dir, state: 'available', from: here, to: there, message: `update available: ${fromL} → ${there}` };
     // dist/ is generated and committed (prebuilt for GitHub installs): local rebuilds of it are never "your changes".
-    const distTracked = git(dir, ['ls-files', '--error-unmatch', 'dist/cli/index.js']).ok;
-    if (distTracked)
+    const distTracked = git(dir, ['cat-file', '-e', 'FETCH_HEAD:dist/cli/index.js']).ok; // the new version ships dist/ prebuilt
+    if (git(dir, ['ls-files', '--error-unmatch', 'dist/cli/index.js']).ok)
         git(dir, ['checkout', '--quiet', '--', 'dist']);
     if (git(dir, ['status', '--porcelain', '--untracked-files=no']).out)
         return { dir, state: 'skipped', from: here, message: 'you have uncommitted changes here, so it was left alone' };
