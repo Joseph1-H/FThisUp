@@ -227,3 +227,18 @@ export class SafetyGuard {
     }
   }
 }
+
+export type Sensitivity = NonNullable<Scenario['sensitivity']>;
+
+/** Runtime approval gate for non-web adapters (CLI, API, desktop...). Same rules as the web executor. */
+export function checkApproval(
+  config: Pick<FThisUpConfig, 'safety'>,
+  s: { requiresApproval?: boolean; sensitivity?: Sensitivity; risk?: 'low' | 'medium' | 'high' },
+): { allowed: boolean; reason?: string } {
+  const approved = new Set(config.safety.approvedActions);
+  if (s.requiresApproval) {
+    const need = s.sensitivity ?? 'irreversible';
+    if (!approved.has(need)) return { allowed: false, reason: `involves a "${need}" action and needs approval (add "${need}" to safety.approvedActions)` };
+  } else if (s.risk === 'high' && !approved.has('irreversible')) return { allowed: false, reason: 'high-risk scenario requires "irreversible" in safety.approvedActions' };
+  return { allowed: true };
+}

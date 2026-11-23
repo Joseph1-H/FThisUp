@@ -25,10 +25,12 @@ export interface SandboxPlan { file: string; args: string[]; sandboxed: boolean 
  * Wrap a command so that: the whole filesystem is READ-ONLY, only `scratch` is writable,
  * there is no network, no access to other processes, and it dies with FThisUp.
  */
-export function wrapInSandbox(file: string, args: string[], opts: { scratch: string; cwd: string }): SandboxPlan {
+export function wrapInSandbox(file: string, args: string[], opts: { scratch: string; cwd: string; projectRoot: string }): SandboxPlan {
   const bw = which('bwrap')!;
   const full = [
     '--ro-bind', '/', '/', '--dev', '/dev', '--proc', '/proc', '--tmpfs', '/tmp',
+    // the project stays visible (read-only) even if it lives under /tmp, then only the scratch dir is writable
+    '--ro-bind', opts.projectRoot, opts.projectRoot,
     '--bind', opts.scratch, opts.scratch,
     '--chdir', opts.cwd,
     '--unshare-net', '--unshare-pid', '--unshare-ipc', '--unshare-uts', '--die-with-parent', '--new-session',
