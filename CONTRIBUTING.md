@@ -9,11 +9,11 @@ git clone <your fork>
 cd fthisup
 npm install
 npx playwright install chromium     # Linux CI/containers: npx playwright install --with-deps chromium
-npm run build
+npm run compile                     # rebuilds dist/ and the skill mirror; commit the result (GitHub installs ship dist/ prebuilt)
 npm run check                       # typecheck + eslint + build + unit and end-to-end tests (~8 min)
 ```
 
-Useful scripts: `npm run typecheck`, `npm run lint`, `npm run test:unit` (fast), `npm run test:e2e` (needs a fresh `npm run build`). Some end-to-end tests need real toolchains (cargo, flutter, cmake, python3, bubblewrap) and skip themselves with a reason when they are missing.
+Useful scripts: `npm run typecheck`, `npm run lint`, `npm run test:unit` (fast), `npm run test:e2e` (needs a fresh `npm run compile`). Some end-to-end tests need real toolchains (cargo, flutter, cmake, python3, bubblewrap) and skip themselves with a reason when they are missing.
 
 ## Layout
 

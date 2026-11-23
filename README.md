@@ -6,17 +6,20 @@ An open-source AI-assisted software testing tool that attempts to break your app
 
 FThisUp reads your repository, works out what it contains (a web app, an HTTP API, a CLI, a Python/JS/Rust/Flutter/C++ library, a desktop app, a Godot game, or several of these in one monorepo), picks the testing adapters that actually apply, and **executes real tests**: your project's own test suites plus aggressive but bounded adversarial checks (hostile input, malformed requests, crashes, hangs, double submits, dead APIs, auth gaps). Every failure is re-run to confirm it, and every confirmed bug comes with evidence and repro steps. The engine is deterministic and needs no LLM, API key, account or telemetry; AI coding agents can drive it through a bundled skill but can never invent results.
 
-FThisUp is installed from GitHub (it is intentionally **not** published to npm):
+FThisUp is an **agent skill**: you install it once, then type `/fthisup` in Claude Code, Codex or Cursor. The `fthisup` command-line program is the engine the skill drives. It is installed from GitHub (intentionally **not** published to npm), and the compiled program ships inside the repository, so **no TypeScript or build step is needed on your machine**, only Node.js 20+ and git.
 
 ```bash
-git clone https://github.com/Joseph1-H/FThisUp.git && cd FThisUp
-npm install && npm link                  # builds it and puts `fthisup` on your PATH
-npx playwright install chromium          # once (the browser is only needed for web apps)
-
-cd /path/to/your/project && fthisup      # detect, plan, test, report
+npm install -g git+https://github.com/Joseph1-H/FThisUp.git   # the engine: puts `fthisup` on your PATH
+fthisup install-skill --global                                  # the skill: makes /fthisup available to your agent
+npx playwright install chromium                                 # once, only needed for web apps
 ```
 
-No clone needed for a one-off run: `npx --yes github:Joseph1-H/FThisUp test` (builds on first use).
+Then, in your agent, inside the project you want tested: `/fthisup`. Or from a terminal: `cd /path/to/your/project && fthisup`.
+
+- Use the `git+https://` form above. The short `github:Joseph1-H/FThisUp` form makes npm try SSH first, which fails on machines without a GitHub SSH key.
+- Update later with `/fthisup update` (or `fthisup update`). It says so if there is no new version.
+- Skill only, no global command: `git clone --depth 1 https://github.com/Joseph1-H/FThisUp ~/.claude/skills/fthisup`.
+- One-off run without installing: `npx --yes git+https://github.com/Joseph1-H/FThisUp.git test`.
 
 `/fthisup` inside Claude Code, Codex or Cursor does the same through the [agent skill](#agent-integration).
 
@@ -112,7 +115,7 @@ Details per adapter, prerequisites and verification status: [docs/adapters.md](d
 
 ## Commands
 
-(`fthisup` below means the linked command, or `npx --yes github:Joseph1-H/FThisUp`.)
+(`fthisup` below means the installed command, or `npx --yes git+https://github.com/Joseph1-H/FThisUp.git`.)
 
 ```text
 fthisup                       # = test: detect → plan → execute → report
@@ -174,7 +177,8 @@ FThisUp is for projects **you own or are authorized to test**. It sends hostile 
 ```bash
 git clone https://github.com/Joseph1-H/FThisUp && cd FThisUp
 npm install && npx playwright install chromium
-npm run check      # typecheck + eslint + build + ~260 unit and end-to-end tests (≈8 min)
+npm run compile    # rebuilds dist/ (committed on purpose: GitHub installs ship it prebuilt)
+npm run check      # typecheck + eslint + compile + ~260 unit and end-to-end tests (≈8 min)
 ```
 
 [CONTRIBUTING.md](CONTRIBUTING.md) · [SECURITY.md](SECURITY.md) · [docs/architecture.md](docs/architecture.md) · [docs/adapters.md](docs/adapters.md)

@@ -16,7 +16,7 @@ If the first argument is `fix`, stop here and follow [references/fix.md](referen
 
 If the first argument is `update`, do only this and stop: run `fthisup update` (it works from any directory, touches only FThisUp's own install and skill folders, and never your project). Relay its output faithfully: it states either the version change or that there is no new version. Use `fthisup update --check` to only look. If it updated anything, tell the user to restart the agent session so the new skill loads. Do not run any tests.
 
-FThisUp is **not published to npm**, so plain `npx fthisup` does not work. Wherever this skill says `fthisup <cmd>`, run `fthisup <cmd>` if it is on PATH (`fthisup --version`), otherwise `npx --yes github:Joseph1-H/FThisUp <cmd>`. Run from the project root.
+FThisUp is **not published to npm**, so plain `npx fthisup` does not work. Wherever this skill says `fthisup <cmd>`, run `fthisup <cmd>` if it is on PATH (`fthisup --version`), otherwise `npx --yes git+https://github.com/Joseph1-H/FThisUp.git <cmd>`. Run from the project root.
 
 ## Scope: this project only
 FThisUp works on **the project in the current working directory and nothing else.** It refuses to run outside a project (or in your home directory), keeps all reads/writes inside the project, and refuses a target server that belongs to a different project. Do not work around this: never `cd` elsewhere to run it, never point it at another project's server, never use `--url`/`--api-url` for an app from a different repo. If it reports a scope block, relay the reason and ask the user. The only supported way to declare an unusual setup (e.g. the app runs in Docker) is a `"url"` in this project's own `fthisup.config.json`, and only if the user confirms it is this project's app.

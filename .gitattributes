@@ -1,0 +1,5 @@
+# Generated build output is committed so GitHub installs need no compiler. Keep it byte-stable across OSes.
+dist/** text eol=lf
+SKILL.md text eol=lf
+references/** text eol=lf
+*.mjs text eol=lf

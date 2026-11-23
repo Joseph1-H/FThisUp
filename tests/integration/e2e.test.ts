@@ -12,7 +12,7 @@ const readResults = (dir: string): RunResults => JSON.parse(fs.readFileSync(path
 const finding = (r: RunResults, scenarioId: string): Finding | undefined => r.findings.find((f) => f.scenarioId === scenarioId);
 
 beforeAll(() => {
-  if (!fs.existsSync(CLI)) throw new Error('dist/ is missing: run `npm run build` first (`npm test` does this for you).');
+  if (!fs.existsSync(CLI)) throw new Error('dist/ is missing: run `npm run compile` first (`npm test` does this for you).');
 });
 
 describe('buggy fixture: FThisUp finds real, reproducible bugs', () => {
